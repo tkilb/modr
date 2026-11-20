@@ -43,10 +43,14 @@ type LinkResult struct {
 	Message     string
 }
 
-// Linker manages symlinks between monorepo mods and RimWorld's active Mods directory.
+// Linker manages symlinks between monorepo mods and a game's active Mods directory.
 type Linker struct {
-	Env      *config.Environment
-	Manifest *manifest.Manifest
+	Env       *config.Environment
+	Manifest  *manifest.Manifest
+	TargetDir string
+	VendorDir string
+	CustomDir string
+	ForkedDir string
 }
 
 // NewLinker initializes a Linker.
@@ -57,6 +61,58 @@ func NewLinker(env *config.Environment, mf *manifest.Manifest) *Linker {
 	}
 }
 
+// NewWorkspaceLinker initializes a Linker bound to a specific game workspace.
+func NewWorkspaceLinker(env *config.Environment, mf *manifest.Manifest, targetDir, vendorDir, customDir, forkedDir string) *Linker {
+	return &Linker{
+		Env:       env,
+		Manifest:  mf,
+		TargetDir: targetDir,
+		VendorDir: vendorDir,
+		CustomDir: customDir,
+		ForkedDir: forkedDir,
+	}
+}
+
+func (l *Linker) resolveVendorDir() string {
+	if l.VendorDir != "" {
+		return l.VendorDir
+	}
+	rw := filepath.Join(l.Env.RepoRoot, "games", "rimworld", "mods", "vendor")
+	if fi, err := os.Stat(rw); err == nil && fi.IsDir() {
+		return rw
+	}
+	return filepath.Join(l.Env.RepoRoot, "mods", "vendor")
+}
+
+func (l *Linker) resolveCustomDir() string {
+	if l.CustomDir != "" {
+		return l.CustomDir
+	}
+	rw := filepath.Join(l.Env.RepoRoot, "games", "rimworld", "mods", "custom")
+	if fi, err := os.Stat(rw); err == nil && fi.IsDir() {
+		return rw
+	}
+	return filepath.Join(l.Env.RepoRoot, "mods", "custom")
+}
+
+func (l *Linker) resolveForkedDir() string {
+	if l.ForkedDir != "" {
+		return l.ForkedDir
+	}
+	rw := filepath.Join(l.Env.RepoRoot, "games", "rimworld", "mods", "forked")
+	if fi, err := os.Stat(rw); err == nil && fi.IsDir() {
+		return rw
+	}
+	return filepath.Join(l.Env.RepoRoot, "mods", "forked")
+}
+
+func (l *Linker) resolveTargetDir() string {
+	if l.TargetDir != "" {
+		return l.TargetDir
+	}
+	return l.Env.RimWorldModsDir
+}
+
 // IsProtected checks if a mod name matches an official DLC / Core directory or system file.
 func IsProtected(name string) bool {
 	return protectedDirs[strings.ToLower(strings.TrimSpace(name))]
@@ -65,9 +121,9 @@ func IsProtected(name string) bool {
 // DiscoverCandidates resolves all enabled vendor and custom mods to be linked.
 func (l *Linker) DiscoverCandidates() (map[string]string, error) {
 	candidates := make(map[string]string)
-	vendorDir := filepath.Join(l.Env.RepoRoot, "mods", "vendor")
-	customDir := filepath.Join(l.Env.RepoRoot, "mods", "custom")
-	forkedDir := filepath.Join(l.Env.RepoRoot, "mods", "forked")
+	vendorDir := l.resolveVendorDir()
+	customDir := l.resolveCustomDir()
+	forkedDir := l.resolveForkedDir()
 
 	disabled := make(map[string]bool)
 
@@ -141,16 +197,16 @@ func (l *Linker) LinkAll(dryRun bool) ([]LinkResult, error) {
 		return nil, err
 	}
 
-	modsDir := l.Env.RimWorldModsDir
+	modsDir := l.resolveTargetDir()
 	if !dryRun {
 		if err := os.MkdirAll(modsDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create RimWorld Mods directory %s: %w", modsDir, err)
+			return nil, fmt.Errorf("failed to create Mods directory %s: %w", modsDir, err)
 		}
 	}
 
 	var results []LinkResult
 
-	// 1. Clean slate: remove existing entries in RimWorld Mods that are NOT protected and NOT candidates
+	// 1. Clean slate: remove existing entries in Mods that are NOT protected and NOT candidates
 	if entries, err := os.ReadDir(modsDir); err == nil {
 		for _, e := range entries {
 			name := e.Name()
@@ -198,9 +254,9 @@ func (l *Linker) LinkAll(dryRun bool) ([]LinkResult, error) {
 	return results, nil
 }
 
-// UnlinkAll removes all symlinks in RimWorld Mods that point into the monorepo.
+// UnlinkAll removes all symlinks in Mods that point into the monorepo.
 func (l *Linker) UnlinkAll(dryRun bool) ([]LinkResult, error) {
-	modsDir := l.Env.RimWorldModsDir
+	modsDir := l.resolveTargetDir()
 	entries, err := os.ReadDir(modsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -209,9 +265,9 @@ func (l *Linker) UnlinkAll(dryRun bool) ([]LinkResult, error) {
 		return nil, err
 	}
 
-	repoVendor := filepath.Join(l.Env.RepoRoot, "mods", "vendor")
-	repoCustom := filepath.Join(l.Env.RepoRoot, "mods", "custom")
-	repoForked := filepath.Join(l.Env.RepoRoot, "mods", "forked")
+	repoVendor := l.resolveVendorDir()
+	repoCustom := l.resolveCustomDir()
+	repoForked := l.resolveForkedDir()
 
 	var results []LinkResult
 
@@ -286,7 +342,7 @@ func (l *Linker) linkSingle(modID, srcPath string, dryRun bool) LinkResult {
 		}
 	}
 
-	destPath := filepath.Join(l.Env.RimWorldModsDir, modID)
+	destPath := filepath.Join(l.resolveTargetDir(), modID)
 
 	// Check existing file/link at destination
 	fi, err := os.Lstat(destPath)

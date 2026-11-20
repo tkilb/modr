@@ -23,10 +23,28 @@ type FetchResult struct {
 	Message string
 }
 
+// ResolveVendorDir returns the vendor mod cache directory for a game, falling back to games/rimworld or mods/vendor.
+func ResolveVendorDir(env *config.Environment, gameName string) string {
+	if gameName != "" {
+		return filepath.Join(env.RepoRoot, "games", gameName, "mods", "vendor")
+	}
+	rw := filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "vendor")
+	if fi, err := os.Stat(rw); err == nil && fi.IsDir() {
+		return rw
+	}
+	return filepath.Join(env.RepoRoot, "mods", "vendor")
+}
+
 // ValidateCache checks whether a cached vendor mod directory exists, is non-empty,
 // contains an About/About.xml, and matches its declared source type.
 func ValidateCache(env *config.Environment, modID string, entry manifest.ModEntry) (bool, string) {
-	destDir := filepath.Join(env.RepoRoot, "mods", "vendor", modID)
+	return ValidateCacheInDir(ResolveVendorDir(env, ""), modID, entry, true)
+}
+
+// ValidateCacheInDir checks whether a cached vendor mod directory exists, is non-empty,
+// and matches its declared source type. If requireAboutXML is true, it also checks for About/About.xml.
+func ValidateCacheInDir(vendorDir, modID string, entry manifest.ModEntry, requireAboutXML bool) (bool, string) {
+	destDir := filepath.Join(vendorDir, modID)
 	fi, err := os.Stat(destDir)
 	if err != nil || !fi.IsDir() {
 		return false, "directory missing"
@@ -54,10 +72,12 @@ func ValidateCache(env *config.Environment, modID string, entry manifest.ModEntr
 		}
 	}
 
-	// About/About.xml presence check
-	aboutPath := filepath.Join(destDir, "About", "About.xml")
-	if _, err := os.Stat(aboutPath); err != nil {
-		return false, "missing About/About.xml"
+	// About/About.xml presence check if required
+	if requireAboutXML {
+		aboutPath := filepath.Join(destDir, "About", "About.xml")
+		if _, err := os.Stat(aboutPath); err != nil {
+			return false, "missing About/About.xml"
+		}
 	}
 
 	return true, "valid"
@@ -65,6 +85,11 @@ func ValidateCache(env *config.Environment, modID string, entry manifest.ModEntr
 
 // FindMissingMods returns a list of mod IDs declared in manifest but missing or invalid in vendor directory.
 func FindMissingMods(env *config.Environment, mf *manifest.Manifest) []string {
+	return FindMissingModsInDir(ResolveVendorDir(env, ""), mf, true)
+}
+
+// FindMissingModsInDir returns a list of mod IDs declared in manifest but missing or invalid in the given vendor directory.
+func FindMissingModsInDir(vendorDir string, mf *manifest.Manifest, requireAboutXML bool) []string {
 	var missing []string
 
 	for modID, entry := range mf.Mods {
@@ -75,7 +100,7 @@ func FindMissingMods(env *config.Environment, mf *manifest.Manifest) []string {
 			continue
 		}
 
-		valid, _ := ValidateCache(env, modID, entry)
+		valid, _ := ValidateCacheInDir(vendorDir, modID, entry, requireAboutXML)
 		if !valid {
 			missing = append(missing, modID)
 		}
@@ -84,14 +109,19 @@ func FindMissingMods(env *config.Environment, mf *manifest.Manifest) []string {
 	return missing
 }
 
-// FetchMod downloads a single mod natively in Go based on its declared source.
+// FetchMod downloads a single mod natively in Go based on its declared source into the default vendor directory.
 func FetchMod(env *config.Environment, modID string, entry manifest.ModEntry, dryRun bool) error {
+	return FetchModToDir(env, ResolveVendorDir(env, ""), modID, entry, dryRun)
+}
+
+// FetchModToDir downloads a single mod natively in Go based on its declared source into a specified vendor directory.
+func FetchModToDir(env *config.Environment, vendorDir, modID string, entry manifest.ModEntry, dryRun bool) error {
 	source := entry.Source
 	if source == "" {
 		source = "steam_workshop"
 	}
 
-	destDir := filepath.Join(env.RepoRoot, "mods", "vendor", modID)
+	destDir := filepath.Join(vendorDir, modID)
 
 	switch source {
 	case "steam_workshop":

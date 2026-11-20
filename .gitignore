@@ -7,6 +7,9 @@ config/*.env
 # Vendor mod cache and downloads
 mods/vendor/*
 !mods/vendor/.gitkeep
+games/*/mods/vendor/*
+!games/*/mods/vendor/.gitkeep
+.modr-context
 .cache/
 tmp/
 bin/

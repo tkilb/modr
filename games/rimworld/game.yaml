@@ -1,0 +1,14 @@
+name: rimworld
+display_name: "RimWorld"
+driver: rimworld
+
+paths:
+  desktop:
+    mods_dir: /mnt/gaming/SteamLibrary/steamapps/common/RimWorld/Mods
+    config_dir: ~/.config/unity3d/Ludeon Studios/RimWorld by Ludeon Studios/Config
+  laptop:
+    mods_dir: ~/.local/share/Steam/steamapps/common/RimWorld/Mods
+    config_dir: ~/.config/unity3d/Ludeon Studios/RimWorld by Ludeon Studios/Config
+  steam-deck:
+    mods_dir: ~/.local/share/Steam/steamapps/common/RimWorld/Mods
+    config_dir: ~/.local/share/Steam/steamapps/compatdata/294100/pfx/drive_c/users/steamuser/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios/Config

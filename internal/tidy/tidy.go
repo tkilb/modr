@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"rimworld-mods/internal/config"
+	"rimworld-mods/internal/core/workspace"
 	"rimworld-mods/internal/linker"
 	"rimworld-mods/internal/manifest"
 )
@@ -22,9 +23,31 @@ type TidyReport struct {
 
 // RunTidy cleans up orphaned lock records, vendor directories, dead symlinks, and runs go mod tidy.
 func RunTidy(env *config.Environment, dryRun bool) (*TidyReport, error) {
-	manifestPath := filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
-	lockPath := filepath.Join(env.RepoRoot, "manifests", "mods.lock.yaml")
-	vendorDir := filepath.Join(env.RepoRoot, "mods", "vendor")
+	manifestPath := filepath.Join(env.RepoRoot, "games", "rimworld", "manifests", "mods.yaml")
+	if _, err := os.Stat(manifestPath); err != nil {
+		manifestPath = filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
+	}
+	lockPath := filepath.Join(env.RepoRoot, "games", "rimworld", "manifests", "mods.lock.yaml")
+	if _, err := os.Stat(lockPath); err != nil {
+		lockPath = filepath.Join(env.RepoRoot, "manifests", "mods.lock.yaml")
+	}
+	vendorDir := filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "vendor")
+	if _, err := os.Stat(vendorDir); err != nil {
+		vendorDir = filepath.Join(env.RepoRoot, "mods", "vendor")
+	}
+
+	return runTidyPaths(env, manifestPath, lockPath, vendorDir, env.RimWorldModsDir, dryRun)
+}
+
+// RunTidyWorkspace cleans up orphaned entries for a specific game workspace.
+func RunTidyWorkspace(env *config.Environment, ws *workspace.Workspace, modsDir string, dryRun bool) (*TidyReport, error) {
+	if modsDir == "" {
+		modsDir = env.RimWorldModsDir
+	}
+	return runTidyPaths(env, ws.ManifestPath, ws.LockfilePath, ws.VendorDir, modsDir, dryRun)
+}
+
+func runTidyPaths(env *config.Environment, manifestPath, lockPath, vendorDir, modsDir string, dryRun bool) (*TidyReport, error) {
 
 	mf, err := manifest.LoadManifest(manifestPath)
 	if err != nil {

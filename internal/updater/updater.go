@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"rimworld-mods/internal/config"
+	"rimworld-mods/internal/core/workspace"
 	"rimworld-mods/internal/fetcher"
 	"rimworld-mods/internal/manifest"
 )
@@ -122,9 +124,28 @@ func CheckGitHubReleaseDetails(repo, tag string) (string, string, string, error)
 
 // UpdateAll checks upstream sources, synchronizes lockfile, and cleanly fetches updated or invalid mods.
 func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateSummary, error) {
-	manifestPath := filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
-	lockPath := filepath.Join(env.RepoRoot, "manifests", "mods.lock.yaml")
+	manifestPath := filepath.Join(env.RepoRoot, "games", "rimworld", "manifests", "mods.yaml")
+	if _, err := os.Stat(manifestPath); err != nil {
+		manifestPath = filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
+	}
+	lockPath := filepath.Join(env.RepoRoot, "games", "rimworld", "manifests", "mods.lock.yaml")
+	if _, err := os.Stat(lockPath); err != nil {
+		lockPath = filepath.Join(env.RepoRoot, "manifests", "mods.lock.yaml")
+	}
+	vendorDir := filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "vendor")
+	if _, err := os.Stat(vendorDir); err != nil {
+		vendorDir = filepath.Join(env.RepoRoot, "mods", "vendor")
+	}
 
+	return runUpdatePaths(env, manifestPath, lockPath, vendorDir, targetMod, dryRun)
+}
+
+// UpdateWorkspace checks upstream sources and updates lockfile for a specific workspace.
+func UpdateWorkspace(env *config.Environment, ws *workspace.Workspace, targetMod string, dryRun bool) (*UpdateSummary, error) {
+	return runUpdatePaths(env, ws.ManifestPath, ws.LockfilePath, ws.VendorDir, targetMod, dryRun)
+}
+
+func runUpdatePaths(env *config.Environment, manifestPath, lockPath, vendorDir, targetMod string, dryRun bool) (*UpdateSummary, error) {
 	mf, err := manifest.LoadManifest(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load manifest: %w", err)
@@ -158,7 +179,7 @@ func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateS
 		}
 
 		currentLock, hasLock := lf.Mods[modID]
-		validCache, cacheReason := fetcher.ValidateCache(env, modID, entry)
+		validCache, cacheReason := fetcher.ValidateCacheInDir(vendorDir, modID, entry, true)
 
 		switch source {
 		case "steam_workshop":
@@ -206,7 +227,7 @@ func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateS
 					fmt.Printf("  [DRY-RUN] Would update %s (%s)\n", modID, updateReason)
 				} else {
 					fmt.Printf("  ==> Updating %s: %s\n", modID, updateReason)
-					if err := fetcher.FetchMod(env, modID, entry, false); err != nil {
+					if err := fetcher.FetchModToDir(env, vendorDir, modID, entry, false); err != nil {
 						summary.Errors[modID] = err
 						fmt.Printf("  [ERROR] Failed to fetch %s: %v\n", modID, err)
 						continue
@@ -265,7 +286,7 @@ func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateS
 					fmt.Printf("  [DRY-RUN] Would update %s (%s)\n", modID, updateReason)
 				} else {
 					fmt.Printf("  ==> Updating %s: %s\n", modID, updateReason)
-					if err := fetcher.FetchMod(env, modID, entry, false); err != nil {
+					if err := fetcher.FetchModToDir(env, vendorDir, modID, entry, false); err != nil {
 						summary.Errors[modID] = err
 						fmt.Printf("  [ERROR] Failed to fetch %s: %v\n", modID, err)
 						continue
@@ -288,7 +309,7 @@ func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateS
 				if dryRun {
 					fmt.Printf("  [DRY-RUN] Would clone git repo %s\n", entry.URL)
 				} else {
-					if err := fetcher.FetchMod(env, modID, entry, false); err != nil {
+					if err := fetcher.FetchModToDir(env, vendorDir, modID, entry, false); err != nil {
 						summary.Errors[modID] = err
 						fmt.Printf("  [ERROR] Failed to fetch %s: %v\n", modID, err)
 						continue

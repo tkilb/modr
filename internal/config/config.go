@@ -22,7 +22,15 @@ type Environment struct {
 // It checks RIMWORLD_MODS_REPO, walks upward from the current directory looking for
 // manifests/mods.yaml, and falls back to known standard repository paths.
 func FindRepoRoot() (string, error) {
+	if env := os.Getenv("MODR_REPO"); env != "" {
+		if fi, err := os.Stat(filepath.Join(env, "games")); err == nil && fi.IsDir() {
+			return env, nil
+		}
+	}
 	if env := os.Getenv("RIMWORLD_MODS_REPO"); env != "" {
+		if fi, err := os.Stat(filepath.Join(env, "games")); err == nil && fi.IsDir() {
+			return env, nil
+		}
 		if fi, err := os.Stat(filepath.Join(env, "manifests", "mods.yaml")); err == nil && !fi.IsDir() {
 			return env, nil
 		}
@@ -32,6 +40,9 @@ func FindRepoRoot() (string, error) {
 	if err == nil {
 		dir := cwd
 		for {
+			if fi, err := os.Stat(filepath.Join(dir, "games")); err == nil && fi.IsDir() {
+				return dir, nil
+			}
 			if fi, err := os.Stat(filepath.Join(dir, "manifests", "mods.yaml")); err == nil && !fi.IsDir() {
 				return dir, nil
 			}
@@ -46,10 +57,16 @@ func FindRepoRoot() (string, error) {
 	if home, err := os.UserHomeDir(); err == nil {
 		candidates := []string{
 			filepath.Join(home, "Git", "rimworld-mods"),
+			filepath.Join(home, "Git", "modr"),
 			filepath.Join(home, "src", "rimworld-mods"),
+			filepath.Join(home, "src", "modr"),
 			filepath.Join(home, ".local", "share", "rimworld-mods"),
+			filepath.Join(home, ".local", "share", "modr"),
 		}
 		for _, c := range candidates {
+			if fi, err := os.Stat(filepath.Join(c, "games")); err == nil && fi.IsDir() {
+				return c, nil
+			}
 			if fi, err := os.Stat(filepath.Join(c, "manifests", "mods.yaml")); err == nil && !fi.IsDir() {
 				return c, nil
 			}
