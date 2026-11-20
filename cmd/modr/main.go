@@ -16,14 +16,15 @@ import (
 )
 
 var (
-	globalGameFlag string
-	sessionMgr     = session.NewSessionManager()
+	explicitGameArg string
+	flagGameValue   string
+	sessionMgr      = session.NewSessionManager()
 )
 
 func main() {
 	// If invoked via legacy alias 'rimmod', default target game to rimworld
 	if strings.Contains(filepath.Base(os.Args[0]), "rimmod") {
-		globalGameFlag = "rimworld"
+		explicitGameArg = "rimworld"
 	}
 
 	env, err := config.LoadEnvironment("")
@@ -46,7 +47,7 @@ linking, ordering, and synchronizing game mods across Arch Linux workstations an
 		},
 	}
 
-	rootCmd.PersistentFlags().StringVarP(&globalGameFlag, "game", "g", "", "Target game workspace (overrides session context)")
+	rootCmd.PersistentFlags().StringVarP(&flagGameValue, "game", "g", "", "Target game workspace (overrides session context)")
 
 	// Register core commands
 	rootCmd.AddCommand(
@@ -113,7 +114,7 @@ func interceptGameArg(env *config.Environment) {
 
 	for _, g := range knownGames {
 		if strings.EqualFold(g, firstArg) {
-			globalGameFlag = strings.ToLower(firstArg)
+			explicitGameArg = strings.ToLower(firstArg)
 			// Remove the game name from os.Args
 			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
 			return
@@ -122,14 +123,18 @@ func interceptGameArg(env *config.Environment) {
 }
 
 // resolveTargetWorkspace determines the active game workspace using:
-// 1. Explicit -g/--game flag (or intercepted <game> prefix)
-// 2. TTY / Session context (from 'modr use <game>')
-// 3. Current working directory (if inside games/<game>)
-// 4. Default fallback to rimworld if only one game exists
+// 1. Explicit -g/--game flag
+// 2. Intercepted <game> positional prefix (e.g. 'modr rimworld status')
+// 3. TTY / Session context (from 'modr use <game>')
+// 4. Current working directory (if inside games/<game>)
+// 5. Default fallback to rimworld if only one game exists
 func resolveTargetWorkspace(env *config.Environment) (*workspace.Workspace, games.GameDriver, error) {
-	gameName := globalGameFlag
+	gameName := flagGameValue
+	if gameName == "" {
+		gameName = explicitGameArg
+	}
 
-	// Priority 2: Session context
+	// Priority 3: Session context
 	if gameName == "" {
 		active, err := sessionMgr.GetActiveGame()
 		if err == nil && active != "" {

@@ -1,0 +1,11 @@
+name: starvalor
+display_name: "Star Valor"
+driver: generic
+
+paths:
+  desktop:
+    mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
+  laptop:
+    mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
+  steam-deck:
+    mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
