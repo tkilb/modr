@@ -34,7 +34,10 @@ func ScaffoldMod(env *config.Environment, name string, modType string, dryRun bo
 		return fmt.Errorf("template directory not found: %s", templateDir)
 	}
 
-	targetDir := filepath.Join(env.RepoRoot, "mods", "custom", name)
+	targetDir := filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "custom", name)
+	if fi, err := os.Stat(filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "custom")); err != nil || !fi.IsDir() {
+		targetDir = filepath.Join(env.RepoRoot, "mods", "custom", name)
+	}
 	if _, err := os.Stat(targetDir); err == nil {
 		return fmt.Errorf("target mod directory already exists: %s", targetDir)
 	}

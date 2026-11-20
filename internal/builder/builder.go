@@ -16,14 +16,30 @@ func BuildMod(env *config.Environment, modName string, configuration string, dry
 		configuration = "Release"
 	}
 
-	modDir := filepath.Join(env.RepoRoot, "mods", "custom", modName)
-	if fi, err := os.Stat(modDir); err != nil || !fi.IsDir() {
-		forkedDir := filepath.Join(env.RepoRoot, "mods", "forked", modName)
-		if ffi, ferr := os.Stat(forkedDir); ferr == nil && ffi.IsDir() {
-			modDir = forkedDir
-		} else {
-			return fmt.Errorf("mod directory not found in mods/custom/ or mods/forked/: %s", modName)
+	findModDir := func() string {
+		candidates := []string{
+			filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "custom", modName),
+			filepath.Join(env.RepoRoot, "games", "rimworld", "mods", "forked", modName),
+			filepath.Join(env.RepoRoot, "mods", "custom", modName),
+			filepath.Join(env.RepoRoot, "mods", "forked", modName),
 		}
+		// Glob across any game workspace
+		globCustom, _ := filepath.Glob(filepath.Join(env.RepoRoot, "games", "*", "mods", "custom", modName))
+		candidates = append(candidates, globCustom...)
+		globForked, _ := filepath.Glob(filepath.Join(env.RepoRoot, "games", "*", "mods", "forked", modName))
+		candidates = append(candidates, globForked...)
+
+		for _, c := range candidates {
+			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
+				return c
+			}
+		}
+		return ""
+	}
+
+	modDir := findModDir()
+	if modDir == "" {
+		return fmt.Errorf("mod directory not found in games/*/mods/custom/ or forked/: %s", modName)
 	}
 
 	// Find .csproj in mod directory or Source/

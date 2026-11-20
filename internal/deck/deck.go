@@ -26,8 +26,13 @@ func CheckConnection(env *config.Environment) error {
 }
 
 // Push synchronizes the monorepo manifests, vendor cache, and custom mods to Steam Deck,
-// then triggers remote reconciliation via 'rimmod apply'.
+// then triggers remote reconciliation via 'modr apply'.
 func Push(env *config.Environment, dryRun bool, checkOnly bool) error {
+	return PushGame(env, "", dryRun, checkOnly)
+}
+
+// PushGame synchronizes the monorepo to Steam Deck and reconciles a specific game or active context.
+func PushGame(env *config.Environment, gameName string, dryRun bool, checkOnly bool) error {
 	deckHost := env.DeckHost
 	if deckHost == "" {
 		deckHost = "steamdeck"
@@ -50,14 +55,14 @@ func Push(env *config.Environment, dryRun bool, checkOnly bool) error {
 		return nil
 	}
 
-	// Ensure bin/rimmod binary is freshly compiled for target architecture before sync
-	binPath := filepath.Join(env.RepoRoot, "bin", "rimmod")
-	fmt.Println("Compiling rimmod binary before sync...")
-	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/rimmod")
+	// Ensure bin/modr binary is freshly compiled for target architecture before sync
+	binPath := filepath.Join(env.RepoRoot, "bin", "modr")
+	fmt.Println("Compiling modr binary before sync...")
+	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/modr")
 	buildCmd.Dir = env.RepoRoot
 	buildCmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
 	if err := buildCmd.Run(); err != nil {
-		return fmt.Errorf("failed compiling rimmod for target: %w", err)
+		return fmt.Errorf("failed compiling modr for target: %w", err)
 	}
 
 	if dryRun {
@@ -110,15 +115,20 @@ func Push(env *config.Environment, dryRun bool, checkOnly bool) error {
 	}
 
 	// Trigger remote reconciliation on Deck
+	remoteCmdStr := fmt.Sprintf("cd %s && ./bin/modr apply", deckRemoteDir)
+	if gameName != "" {
+		remoteCmdStr = fmt.Sprintf("cd %s && ./bin/modr %s apply", deckRemoteDir, gameName)
+	}
+
 	if dryRun {
-		fmt.Printf("[DRY-RUN] Would run './bin/rimmod apply --dry-run' on %s in %s\n", deckHost, deckRemoteDir)
+		fmt.Printf("[DRY-RUN] Would run '%s' on %s\n", remoteCmdStr, deckHost)
 	} else {
-		fmt.Printf("Reconciling remote RimWorld installation on %s...\n", deckHost)
-		remoteCmd := exec.Command("ssh", deckHost, fmt.Sprintf("cd %s && ./bin/rimmod apply", deckRemoteDir))
+		fmt.Printf("Reconciling remote installation on %s...\n", deckHost)
+		remoteCmd := exec.Command("ssh", deckHost, remoteCmdStr)
 		remoteCmd.Stdout = os.Stdout
 		remoteCmd.Stderr = os.Stderr
 		if err := remoteCmd.Run(); err != nil {
-			return fmt.Errorf("remote rimmod apply failed: %w", err)
+			return fmt.Errorf("remote modr apply failed: %w", err)
 		}
 		fmt.Printf("\033[32m[OK]\033[0m Steam Deck synchronization complete.\n")
 	}
