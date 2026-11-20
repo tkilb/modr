@@ -4,8 +4,6 @@ SHELL := /usr/bin/env bash
 BINDIR ?= $(HOME)/bin
 INSTALL_BIN := $(BINDIR)/modr
 BIN := ./bin/modr
-LEGACY_BIN := ./bin/rimmod
-LEGACY_INSTALL_BIN := $(BINDIR)/rimmod
 
 .PHONY: help build test status apply apply-dry-run update update-dry-run \
         tidy tidy-dry-run import import-dry-run order deck-push deck-push-dry-run deck-check \
@@ -18,7 +16,6 @@ LEGACY_INSTALL_BIN := $(BINDIR)/rimmod
 build: ## Compile the modr CLI
 	@mkdir -p bin
 	@go build -o $(BIN) ./cmd/modr
-	@ln -sf modr $(LEGACY_BIN)
 
 test: ## Run the Go test suite
 	@go test ./...
@@ -30,28 +27,24 @@ $(BIN):
 install: $(BIN) ## Install modr CLI to $(BINDIR)/modr (default: ~/bin/modr)
 ifeq ($(findstring n,$(firstword -$(MAKEFLAGS))),n)
 	@echo "  [DRY-RUN] Would install $(abspath $(BIN)) -> $(INSTALL_BIN)"
-	@echo "  [DRY-RUN] Would symlink $(INSTALL_BIN) -> $(LEGACY_INSTALL_BIN)"
 else
 	@mkdir -p $(BINDIR)
 	@ln -sf $(abspath $(BIN)) $(INSTALL_BIN)
-	@ln -sf $(INSTALL_BIN) $(LEGACY_INSTALL_BIN)
 	@echo "Installed $(INSTALL_BIN) -> $(abspath $(BIN))"
-	@echo "Linked compatibility alias $(LEGACY_INSTALL_BIN) -> $(INSTALL_BIN)"
 endif
 
 install-dry-run: ## Preview installing modr CLI
 	@echo "  [DRY-RUN] Would install $(abspath $(BIN)) -> $(INSTALL_BIN)"
-	@echo "  [DRY-RUN] Would symlink $(INSTALL_BIN) -> $(LEGACY_INSTALL_BIN)"
 
-uninstall: ## Remove installed modr and rimmod CLIs from $(BINDIR)
+uninstall: ## Remove installed modr CLI from $(BINDIR)
 ifeq ($(findstring n,$(firstword -$(MAKEFLAGS))),n)
-	@echo "  [DRY-RUN] Would remove $(INSTALL_BIN) and $(LEGACY_INSTALL_BIN)"
+	@echo "  [DRY-RUN] Would remove $(INSTALL_BIN)"
 else
-	@rm -f $(INSTALL_BIN) $(LEGACY_INSTALL_BIN)
-	@echo "Removed $(INSTALL_BIN) and $(LEGACY_INSTALL_BIN)"
+	@rm -f $(INSTALL_BIN)
+	@echo "Removed $(INSTALL_BIN)"
 endif
 
-uninstall-dry-run: ## Preview removing installed rimmod CLI
+uninstall-dry-run: ## Preview removing installed modr CLI
 	@echo "  [DRY-RUN] Would remove $(INSTALL_BIN)"
 
 ##@ Core Workflows

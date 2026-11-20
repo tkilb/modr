@@ -22,11 +22,6 @@ var (
 )
 
 func main() {
-	// If invoked via legacy alias 'rimmod', default target game to rimworld
-	if strings.Contains(filepath.Base(os.Args[0]), "rimmod") {
-		explicitGameArg = "rimworld"
-	}
-
 	env, err := config.LoadEnvironment("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing environment: %v\n", err)
