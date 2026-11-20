@@ -21,6 +21,11 @@ var (
 )
 
 func main() {
+	// If invoked via legacy alias 'rimmod', default target game to rimworld
+	if strings.Contains(filepath.Base(os.Args[0]), "rimmod") {
+		globalGameFlag = "rimworld"
+	}
+
 	env, err := config.LoadEnvironment("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing environment: %v\n", err)
@@ -53,6 +58,8 @@ linking, ordering, and synchronizing game mods across Arch Linux workstations an
 		newTidyCmd(env),
 		newDeckCmd(env),
 		newDevCmd(env),
+		newOrderCmd(env),
+		newImportCmd(env),
 	)
 
 	// Ensure Cobra's default help command is available
@@ -91,7 +98,8 @@ func interceptGameArg(env *config.Environment) {
 	standardCmds := map[string]bool{
 		"use": true, "games": true, "list": true, "apply": true,
 		"status": true, "update": true, "tidy": true, "deck": true,
-		"dev": true, "help": true, "completion": true,
+		"dev": true, "order": true, "import": true, "add": true,
+		"help": true, "completion": true,
 	}
 	if standardCmds[firstArg] {
 		return

@@ -15,10 +15,10 @@ LEGACY_INSTALL_BIN := $(BINDIR)/rimmod
         build-load-order build-mod
 
 ##@ Build & Test
-build: ## Compile the modr and rimmod CLIs
+build: ## Compile the modr CLI
 	@mkdir -p bin
 	@go build -o $(BIN) ./cmd/modr
-	@go build -o $(LEGACY_BIN) ./cmd/rimmod
+	@ln -sf modr $(LEGACY_BIN)
 
 test: ## Run the Go test suite
 	@go test ./...

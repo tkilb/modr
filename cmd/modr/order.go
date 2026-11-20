@@ -23,16 +23,24 @@ func newOrderCmd(env *config.Environment) *cobra.Command {
 the topological load order (Harmony -> Core -> DLCs -> Mods -> Trailing),
 and optionally writes ModsConfig.xml.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manifestPath := filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
-			mf, err := manifest.LoadManifest(manifestPath)
+			ws, driver, err := resolveTargetWorkspace(env)
 			if err != nil {
-				return fmt.Errorf("failed to read manifest %s: %w", manifestPath, err)
+				return err
+			}
+
+			if driver.Name() != "rimworld" {
+				return fmt.Errorf("load ordering is only applicable for games with topological sort drivers (current: %s)", driver.Name())
+			}
+
+			mf, err := ws.LoadManifest()
+			if err != nil {
+				return fmt.Errorf("failed to read manifest %s: %w", ws.ManifestPath, err)
 			}
 
 			sorter := order.NewSorter()
-			vendorDir := filepath.Join(env.RepoRoot, "mods", "vendor")
-			customDir := filepath.Join(env.RepoRoot, "mods", "custom")
-			forkedDir := filepath.Join(env.RepoRoot, "mods", "forked")
+			vendorDir := ws.VendorDir
+			customDir := ws.CustomDir
+			forkedDir := ws.ForkedDir
 
 			for modID, entry := range mf.Mods {
 				if !entry.IsEnabled() || entry.IsCustom() || entry.IsForked() {
@@ -149,7 +157,11 @@ and optionally writes ModsConfig.xml.`,
 			}
 
 			if writeConfig {
-				configPath := filepath.Join(env.RimWorldConfigDir, "ModsConfig.xml")
+				paths, err := driver.ResolvePaths(env, ws)
+				if err != nil {
+					return err
+				}
+				configPath := filepath.Join(paths.ConfigDir, "ModsConfig.xml")
 				existingVersion := order.ReadExistingVersion(configPath)
 				if existingVersion == "" {
 					existingVersion = "1.5.4297 rev513"

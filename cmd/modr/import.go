@@ -24,23 +24,28 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 		Use:     "import <url>",
 		Aliases: []string{"add"},
 		Short:   "Import a new mod from a URL (Steam Workshop, GitHub, Git)",
-		Long: `Imports a mod into the repository from a Steam Workshop, GitHub, or Git URL:
+		Long: `Imports a mod into the game workspace from a Steam Workshop, GitHub, or Git URL:
   1. Detects source type and downloads the mod into staging
-  2. Inspects About/About.xml to determine exact packageId, name, and dependencies
+  2. Inspects metadata (About.xml if available) to determine name and package ID
   3. Derives a clean, collision-free kebab-case slug (or uses --slug)
-  4. Moves mod into mods/vendor/<slug>
-  5. Adds mod entry to manifests/mods.yaml while preserving comments
-  6. Optionally applies and sorts mod load order (--apply)`,
+  4. Moves mod into <game>/mods/vendor/<slug>
+  5. Adds mod entry to <game>/manifests/mods.yaml while preserving comments
+  6. Optionally applies and configures mods (--apply)`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rawURL := args[0]
+
+			ws, _, err := resolveTargetWorkspace(env)
+			if err != nil {
+				return err
+			}
 
 			src, err := importer.ParseSource(rawURL)
 			if err != nil {
 				return fmt.Errorf("failed to parse source: %w", err)
 			}
 
-			manifestPath := filepath.Join(env.RepoRoot, "manifests", "mods.yaml")
+			manifestPath := ws.ManifestPath
 			mf, err := manifest.LoadManifest(manifestPath)
 			if err != nil {
 				return fmt.Errorf("failed to read manifest %s: %w", manifestPath, err)
@@ -52,9 +57,11 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 			}
 
 			if dryRun {
-				fmt.Printf("%s[DRY-RUN]%s Previewing mod import from %s (%s)...\n", colorCyan, colorReset, src.SourceType, rawURL)
+				fmt.Printf("%s[DRY-RUN]%s Previewing mod import into %s from %s (%s)...\n",
+					colorCyan, colorReset, ws.GameName, src.SourceType, rawURL)
 			} else {
-				fmt.Printf("%s==> Step 1: Downloading mod from %s (%s)...%s\n", colorBold, src.SourceType, rawURL, colorReset)
+				fmt.Printf("%s==> Step 1: Downloading mod for %s from %s (%s)...%s\n",
+					colorBold, ws.GameName, src.SourceType, rawURL, colorReset)
 			}
 
 			meta, stageDir, cleanup, err := importer.FetchAndStage(env, src, dryRun)
@@ -85,14 +92,15 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 			}
 
 			if _, ok := mf.Mods[slug]; ok {
-				fmt.Printf("  %s[WARN]%s Slug '%s' is already declared in manifests/mods.yaml (will update entry)\n", colorYellow, colorReset, slug)
+				fmt.Printf("  %s[WARN]%s Slug '%s' is already declared in %s (will update entry)\n",
+					colorYellow, colorReset, slug, manifestPath)
 			}
 
 			// Step 3: Move to vendor directory
-			vendorDest := filepath.Join(env.RepoRoot, "mods", "vendor", slug)
+			vendorDest := filepath.Join(ws.VendorDir, slug)
 			if dryRun {
 				fmt.Printf("\n%s[DRY-RUN]%s Would move downloaded mod to: %s\n", colorCyan, colorReset, vendorDest)
-				fmt.Printf("%s[DRY-RUN]%s Would register '%s' in manifests/mods.yaml\n", colorCyan, colorReset, slug)
+				fmt.Printf("%s[DRY-RUN]%s Would register '%s' in %s\n", colorCyan, colorReset, slug, manifestPath)
 			} else {
 				fmt.Printf("\n%s==> Step 3: Placing mod into cache...%s\n", colorBold, colorReset)
 				_ = os.RemoveAll(vendorDest)
@@ -108,7 +116,7 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 				fmt.Printf("  Placed at %s\n", vendorDest)
 
 				// Step 4: Write to manifests/mods.yaml
-				fmt.Printf("\n%s==> Step 4: Updating manifests/mods.yaml...%s\n", colorBold, colorReset)
+				fmt.Printf("\n%s==> Step 4: Updating %s...%s\n", colorBold, manifestPath, colorReset)
 				enabledVal := !disabled
 				newEntry := manifest.ModEntry{
 					Name:        meta.Name,
@@ -123,7 +131,7 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 				}
 
 				if err := importer.SaveManifestWithComments(manifestPath, slug, newEntry); err != nil {
-					return fmt.Errorf("failed to update manifests/mods.yaml: %w", err)
+					return fmt.Errorf("failed to update %s: %w", manifestPath, err)
 				}
 				fmt.Printf("  %sAdded '%s' to %s%s\n", colorGreen, slug, manifestPath, colorReset)
 			}
@@ -135,8 +143,8 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 					return fmt.Errorf("apply failed after import: %w", err)
 				}
 			} else {
-				fmt.Printf("\n%s[OK] Mod '%s' imported successfully.%s\n", colorGreen, slug, colorReset)
-				fmt.Printf("Run '%srimmod apply%s' to deploy symlinks and update load order.\n", colorBold, colorReset)
+				fmt.Printf("\n%s[OK] Mod '%s' imported successfully into %s.%s\n", colorGreen, slug, ws.GameName, colorReset)
+				fmt.Printf("Run '%smodr apply%s' to deploy symlinks.\n", colorBold, colorReset)
 			}
 
 			return nil
