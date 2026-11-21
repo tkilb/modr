@@ -49,8 +49,9 @@ type Linker struct {
 	Manifest  *manifest.Manifest
 	TargetDir string
 	VendorDir string
-	CustomDir string
-	ForkedDir string
+	CustomDir       string
+	ForkedDir       string
+	RequireAboutXML bool
 }
 
 // NewLinker initializes a Linker.
@@ -162,7 +163,11 @@ func (l *Linker) DiscoverCandidates() (map[string]string, error) {
 				continue
 			}
 			modPath := filepath.Join(customDir, customID)
-			if _, err := order.FindAboutXML(modPath); err == nil {
+			if l.RequireAboutXML {
+				if _, err := order.FindAboutXML(modPath); err == nil {
+					candidates[customID] = modPath
+				}
+			} else {
 				candidates[customID] = modPath
 			}
 		}
@@ -180,7 +185,11 @@ func (l *Linker) DiscoverCandidates() (map[string]string, error) {
 				continue
 			}
 			modPath := filepath.Join(forkedDir, forkedID)
-			if _, err := order.FindAboutXML(modPath); err == nil {
+			if l.RequireAboutXML {
+				if _, err := order.FindAboutXML(modPath); err == nil {
+					candidates[forkedID] = modPath
+				}
+			} else {
 				candidates[forkedID] = modPath
 			}
 		}

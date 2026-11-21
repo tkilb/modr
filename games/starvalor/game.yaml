@@ -2,10 +2,18 @@ name: starvalor
 display_name: "Star Valor"
 driver: generic
 
+framework:
+  type: bepinex5
+  version: "5.4.23.4"
+  url: "https://github.com/BepInEx/BepInEx/releases/download/v5.4.23.4/BepInEx_win_x64_5.4.23.4.zip"
+
 paths:
   desktop:
+    game_dir: ~/.local/share/Steam/steamapps/common/Star Valor
     mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
   laptop:
+    game_dir: ~/.local/share/Steam/steamapps/common/Star Valor
     mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
   steam-deck:
-    mods_dir: ~/.local/share/Steam/steamapps/common/Star Valor/BepInEx/plugins
+    game_dir: /run/media/steam-drive/steamapps/common/Star Valor
+    mods_dir: /run/media/steam-drive/steamapps/common/Star Valor/BepInEx/plugins

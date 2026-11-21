@@ -3,6 +3,7 @@ package importer
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,11 +20,12 @@ import (
 
 // SourceInfo holds parsed mod source information.
 type SourceInfo struct {
-	SourceType string // "steam_workshop", "github_release", "git"
-	WorkshopID string
-	Repo       string
-	Tag        string
-	URL        string
+	SourceType  string // "steam_workshop", "github_release", "git", "archive"
+	WorkshopID  string
+	Repo        string
+	Tag         string
+	URL         string
+	ArchivePath string
 }
 
 var (
@@ -33,11 +35,33 @@ var (
 	ghRepoRegex     = regexp.MustCompile(`^github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`)
 )
 
-// ParseSource parses an input string (URL or workshop ID) into a SourceInfo.
+// ParseSource parses an input string (URL, file path, or workshop ID) into a SourceInfo.
 func ParseSource(raw string) (*SourceInfo, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return nil, fmt.Errorf("empty URL or source provided")
+	}
+
+	// 0. Local file or archive path (e.g. ~/Downloads/Mod.zip, ./mod.dll, /path/to/archive)
+	expanded := trimmed
+	if strings.HasPrefix(trimmed, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			expanded = filepath.Join(home, strings.TrimPrefix(trimmed, "~/"))
+		}
+	}
+	if _, err := os.Stat(expanded); err == nil {
+		return &SourceInfo{
+			SourceType:  "archive",
+			ArchivePath: expanded,
+			URL:         trimmed,
+		}, nil
+	}
+
+	// Check if this looks like a local file path that simply doesn't exist
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(trimmed, "/") || strings.HasPrefix(trimmed, "./") || strings.HasPrefix(trimmed, "../") || strings.HasPrefix(trimmed, "~/") ||
+		strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".dll") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".7z") {
+		return nil, fmt.Errorf("local archive file not found: %s", expanded)
 	}
 
 	// 1. Direct numeric Workshop ID (e.g. 3525571078)
@@ -48,7 +72,12 @@ func ParseSource(raw string) (*SourceInfo, error) {
 		}, nil
 	}
 
-	// 2. Steam Workshop URL
+	// 2. Nexus Mods URL hint
+	if strings.Contains(trimmed, "nexusmods.com") {
+		return nil, fmt.Errorf("nexus Mods does not permit automated direct downloads on free accounts\nPlease download the mod archive (.zip) manually from Nexus and import via:\n  modr import <path-to-archive.zip>")
+	}
+
+	// 3. Steam Workshop URL
 	if strings.Contains(trimmed, "steamcommunity.com") {
 		matches := urlIDParamRegex.FindStringSubmatch(trimmed)
 		if len(matches) > 1 {
@@ -219,22 +248,55 @@ type ImportResult struct {
 	VendorDir   string
 }
 
-// FetchAndStage downloads the mod into a temporary staging directory and inspects its About.xml.
+// FetchAndStage downloads the mod into a temporary staging directory and inspects its About.xml or generic structure.
 func FetchAndStage(env *config.Environment, src *SourceInfo, dryRun bool) (*order.ModMetaData, string, func(), error) {
-	tempDir, err := os.MkdirTemp("", "rimmod-import-*")
+	tempDir, err := os.MkdirTemp("", "modr-import-*")
 	if err != nil {
 		return nil, "", nil, fmt.Errorf("failed to create staging directory: %w", err)
 	}
 	cleanup := func() { _ = os.RemoveAll(tempDir) }
 
 	if dryRun {
+		previewName := "DryRun Mod"
+		previewPkg := "dryrun.preview"
+		if src.SourceType == "archive" && src.ArchivePath != "" {
+			previewName = cleanModName(strings.TrimSuffix(filepath.Base(src.ArchivePath), filepath.Ext(src.ArchivePath)))
+			previewPkg = ToKebabCase(previewName)
+		}
 		return &order.ModMetaData{
-			Name:      "DryRun Mod",
-			PackageID: "dryrun.preview",
+			Name:      previewName,
+			PackageID: previewPkg,
 		}, tempDir, cleanup, nil
 	}
 
 	switch src.SourceType {
+	case "archive":
+		fi, err := os.Stat(src.ArchivePath)
+		if err != nil {
+			cleanup()
+			return nil, "", nil, fmt.Errorf("archive file not found: %w", err)
+		}
+		if fi.IsDir() {
+			if err := fetcher.CopyDir(src.ArchivePath, tempDir); err != nil {
+				cleanup()
+				return nil, "", nil, fmt.Errorf("failed to copy directory: %w", err)
+			}
+		} else if strings.HasSuffix(strings.ToLower(src.ArchivePath), ".zip") {
+			if err := fetcher.UnzipToDir(src.ArchivePath, tempDir); err != nil {
+				cleanup()
+				return nil, "", nil, fmt.Errorf("failed to unpack zip file: %w", err)
+			}
+		} else if strings.HasSuffix(strings.ToLower(src.ArchivePath), ".dll") {
+			dllName := filepath.Base(src.ArchivePath)
+			if err := copySingleFile(src.ArchivePath, filepath.Join(tempDir, dllName)); err != nil {
+				cleanup()
+				return nil, "", nil, fmt.Errorf("failed to copy DLL file: %w", err)
+			}
+		} else {
+			cleanup()
+			return nil, "", nil, fmt.Errorf("unsupported file format for archive import: %s (supported: .zip, .dll, directory)", filepath.Base(src.ArchivePath))
+		}
+
 	case "steam_workshop":
 		if err := fetcher.FetchSteamWorkshop(env, "staging", src.WorkshopID, tempDir, false); err != nil {
 			cleanup()
@@ -258,26 +320,84 @@ func FetchAndStage(env *config.Environment, src *SourceInfo, dryRun bool) (*orde
 		return nil, "", nil, fmt.Errorf("unsupported source type: %s", src.SourceType)
 	}
 
+	// Unwrap nested BepInEx/plugins directories if present
+	fetcher.NormalizePluginDirs(tempDir)
+
+	// RimWorld mods have About/About.xml
 	aboutPath, err := order.FindAboutXML(tempDir)
+	if err == nil {
+		meta, err := order.ParseAboutXML(aboutPath)
+		if err == nil {
+			if meta.PackageID == "" {
+				meta.PackageID = filepath.Base(tempDir)
+			}
+			if meta.Name == "" {
+				meta.Name = meta.PackageID
+			}
+			return meta, tempDir, cleanup, nil
+		}
+	}
+
+	// Generic mods (Star Valor, BepInEx plugins) without About.xml
+	name := deriveGenericModName(src, tempDir)
+	pkgID := ToKebabCase(name)
+	return &order.ModMetaData{
+		Name:        name,
+		PackageID:   pkgID,
+		Description: "Imported from local archive",
+	}, tempDir, cleanup, nil
+}
+
+func copySingleFile(src, dst string) error {
+	in, err := os.Open(src)
 	if err != nil {
-		cleanup()
-		return nil, "", nil, fmt.Errorf("could not find About.xml in downloaded mod: %w", err)
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
 	}
 
-	meta, err := order.ParseAboutXML(aboutPath)
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		cleanup()
-		return nil, "", nil, fmt.Errorf("failed to parse About.xml: %w", err)
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
+func deriveGenericModName(src *SourceInfo, dir string) string {
+	var dllNames []string
+	_ = filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && !fi.IsDir() && strings.HasSuffix(strings.ToLower(fi.Name()), ".dll") {
+			dllNames = append(dllNames, strings.TrimSuffix(fi.Name(), filepath.Ext(fi.Name())))
+		}
+		return nil
+	})
+
+	if len(dllNames) == 1 {
+		return dllNames[0]
 	}
 
-	if meta.PackageID == "" {
-		meta.PackageID = filepath.Base(tempDir)
-	}
-	if meta.Name == "" {
-		meta.Name = meta.PackageID
+	if src.ArchivePath != "" {
+		base := filepath.Base(src.ArchivePath)
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+		return cleanModName(base)
 	}
 
-	return meta, tempDir, cleanup, nil
+	return "mod"
+}
+
+func cleanModName(s string) string {
+	re := regexp.MustCompile(`[-_][vV]?[0-9]+(\.[0-9]+)*.*$`)
+	cleaned := re.ReplaceAllString(s, "")
+	if cleaned != "" && len(cleaned) >= 3 {
+		return cleaned
+	}
+	return s
 }
 
 // AddModToManifestNode updates the YAML AST node tree for manifests/mods.yaml, preserving existing comments and ordering.

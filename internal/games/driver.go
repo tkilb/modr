@@ -11,6 +11,7 @@ import (
 
 // GamePaths holds resolved filesystem locations for a game on the current machine
 type GamePaths struct {
+	GameDir   string
 	ModsDir   string
 	ConfigDir string
 }

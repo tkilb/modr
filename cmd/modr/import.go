@@ -21,16 +21,17 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:     "import <url>",
+		Use:     "import <source>",
 		Aliases: []string{"add"},
-		Short:   "Import a new mod from a URL (Steam Workshop, GitHub, Git)",
-		Long: `Imports a mod into the game workspace from a Steam Workshop, GitHub, or Git URL:
-  1. Detects source type and downloads the mod into staging
-  2. Inspects metadata (About.xml if available) to determine name and package ID
-  3. Derives a clean, collision-free kebab-case slug (or uses --slug)
-  4. Moves mod into <game>/mods/vendor/<slug>
-  5. Adds mod entry to <game>/manifests/mods.yaml while preserving comments
-  6. Optionally applies and configures mods (--apply)`,
+		Short:   "Import a new mod from a URL (Steam Workshop, GitHub, Git) or local archive (.zip, .dll)",
+		Long: `Imports a mod into the game workspace from a Steam Workshop, GitHub, Git URL, or local archive:
+  1. Detects source type (URL or local .zip/.dll file) and stages the mod
+  2. Inspects metadata (About.xml or plugin DLL) to determine name and package ID
+  3. Normalizes directory structure (e.g. unwrapping BepInEx/plugins)
+  4. Derives a clean, collision-free kebab-case slug (or uses --slug)
+  5. Moves mod into <game>/mods/vendor/<slug>
+  6. Adds mod entry to <game>/manifests/mods.yaml while preserving comments
+  7. Optionally applies and configures mods (--apply)`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rawURL := args[0]
@@ -60,8 +61,13 @@ func newImportCmd(env *config.Environment) *cobra.Command {
 				fmt.Printf("%s[DRY-RUN]%s Previewing mod import into %s from %s (%s)...\n",
 					colorCyan, colorReset, ws.GameName, src.SourceType, rawURL)
 			} else {
-				fmt.Printf("%s==> Step 1: Downloading mod for %s from %s (%s)...%s\n",
-					colorBold, ws.GameName, src.SourceType, rawURL, colorReset)
+				if src.SourceType == "archive" {
+					fmt.Printf("%s==> Step 1: Staging mod for %s from archive (%s)...%s\n",
+						colorBold, ws.GameName, rawURL, colorReset)
+				} else {
+					fmt.Printf("%s==> Step 1: Downloading mod for %s from %s (%s)...%s\n",
+						colorBold, ws.GameName, src.SourceType, rawURL, colorReset)
+				}
 			}
 
 			meta, stageDir, cleanup, err := importer.FetchAndStage(env, src, dryRun)

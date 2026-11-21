@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"rimworld-mods/internal/config"
 	"rimworld-mods/internal/deck"
+	"rimworld-mods/internal/games/generic"
 	"rimworld-mods/internal/manifest"
 )
 
@@ -60,7 +61,18 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 			fmt.Printf("%sModr - %s Status & Integrity Report%s\n", colorBold, disp, colorReset)
 			fmt.Printf("Machine Target:        %s%s%s\n", colorCyan, env.Machine, colorReset)
 			fmt.Printf("Game Driver:           %s\n", driver.Name())
+			if ws.Spec != nil && ws.Spec.Framework != nil {
+				installed, detail := generic.CheckFrameworkStatus(ws, paths)
+				if installed {
+					fmt.Printf("Mod Loader:            %s%s%s\n", colorGreen, detail, colorReset)
+				} else {
+					fmt.Printf("Mod Loader:            %s%s%s\n", colorYellow, detail, colorReset)
+				}
+			}
 			fmt.Printf("Target Mods Path:      %s%s%s\n", colorCyan, paths.ModsDir, colorReset)
+			if paths.GameDir != "" {
+				fmt.Printf("Game Install Dir:      %s\n", paths.GameDir)
+			}
 			fmt.Printf("Workspace Root:        %s\n", ws.RootDir)
 			if paths.ConfigDir != "" {
 				fmt.Printf("Config Dir:            %s\n", paths.ConfigDir)
@@ -144,6 +156,9 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 							c = c[:7]
 						}
 						versionInfo = fmt.Sprintf("git:%s", c)
+						vColor = ""
+					} else if lockEntry.ResolvedTag != "" {
+						versionInfo = fmt.Sprintf("tag:%s", lockEntry.ResolvedTag)
 						vColor = ""
 					} else if lockEntry.GitRef != "" {
 						versionInfo = lockEntry.GitRef

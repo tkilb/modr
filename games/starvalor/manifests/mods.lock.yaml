@@ -1,3 +1,11 @@
-# Star Valor Lockfile
-# Generated and synchronized by modr
-mods: {}
+version: 1
+generated_at: "2026-11-21T22:47:00Z"
+machine: linux-book
+mods:
+    bepinex-configuration-manager:
+        source: github_release
+        download_path: mods/vendor/bepinex-configuration-manager
+        repo: BepInEx/BepInEx.ConfigurationManager
+        resolved_tag: v19.1
+        published_at: "2026-10-24T00:04:46Z"
+        asset_name: BepInEx.ConfigurationManager_BepInEx5_v19.1.zip

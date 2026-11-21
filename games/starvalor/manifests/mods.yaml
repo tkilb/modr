@@ -1,3 +1,37 @@
 # Star Valor Mod Manifest
 # Managed by modr (Generic BepInEx driver)
-mods: {}
+version: 1
+
+mods:
+  bepinex-configuration-manager:
+    name: "BepInEx Configuration Manager"
+    source: github_release
+    repo: "BepInEx/BepInEx.ConfigurationManager"
+    tag: "v19.1"
+    asset: "BepInEx5"
+    enabled: true
+    description: "In-game configuration manager for BepInEx 5 (F1 settings menu)"
+
+  autopilot:
+    name: Autopilot
+    source: archive
+    url: /home/tylerkilburn/Downloads/Autopilot 1.8.2 72 1.8.2 2026-11-07T21-07Z M7J0u74sQ.zip
+    package_id: autopilot
+    enabled: true
+    description: Imported from local archive
+
+  loot-tables:
+    name: LootTables
+    source: archive
+    url: /home/tylerkilburn/Downloads/LootTables 1.2.1 127 1.2.1 2026-10-31T19-10Z Cizx5iPTH.zip
+    package_id: loot-tables
+    enabled: true
+    description: Imported from local archive
+
+  unlimited-skill-resets:
+    name: UnlimitedSkillResets
+    source: archive
+    url: /home/tylerkilburn/Downloads/UnlimitedSkillResets 1.2.1 70 1.2.1 2026-10-08T18-30Z l2Bz62Eaw.zip
+    package_id: unlimited-skill-resets
+    enabled: true
+    description: Imported from local archive

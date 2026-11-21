@@ -75,7 +75,7 @@ func CheckSteamDetails(workshopID string) (int64, string, error) {
 }
 
 // CheckGitHubReleaseDetails queries GitHub's API for release metadata.
-func CheckGitHubReleaseDetails(repo, tag string) (string, string, string, error) {
+func CheckGitHubReleaseDetails(repo, tag, assetPattern string) (string, string, string, error) {
 	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 	if tag != "" && tag != "latest" {
 		apiURL = fmt.Sprintf("https://api.github.com/repos/%s/releases/tags/%s", repo, tag)
@@ -113,7 +113,11 @@ func CheckGitHubReleaseDetails(repo, tag string) (string, string, string, error)
 
 	assetName := ""
 	for _, a := range rel.Assets {
-		if strings.HasSuffix(a.Name, ".zip") {
+		if assetPattern != "" && (a.Name == assetPattern || strings.Contains(a.Name, assetPattern)) {
+			assetName = a.Name
+			break
+		}
+		if assetPattern == "" && strings.HasSuffix(a.Name, ".zip") {
 			assetName = a.Name
 			break
 		}
@@ -137,15 +141,19 @@ func UpdateAll(env *config.Environment, targetMod string, dryRun bool) (*UpdateS
 		vendorDir = filepath.Join(env.RepoRoot, "mods", "vendor")
 	}
 
-	return runUpdatePaths(env, manifestPath, lockPath, vendorDir, targetMod, dryRun)
+	return runUpdatePaths(env, manifestPath, lockPath, vendorDir, targetMod, true, dryRun)
 }
 
 // UpdateWorkspace checks upstream sources and updates lockfile for a specific workspace.
 func UpdateWorkspace(env *config.Environment, ws *workspace.Workspace, targetMod string, dryRun bool) (*UpdateSummary, error) {
-	return runUpdatePaths(env, ws.ManifestPath, ws.LockfilePath, ws.VendorDir, targetMod, dryRun)
+	requireAboutXML := true
+	if ws.Spec != nil && ws.Spec.Driver == "generic" {
+		requireAboutXML = false
+	}
+	return runUpdatePaths(env, ws.ManifestPath, ws.LockfilePath, ws.VendorDir, targetMod, requireAboutXML, dryRun)
 }
 
-func runUpdatePaths(env *config.Environment, manifestPath, lockPath, vendorDir, targetMod string, dryRun bool) (*UpdateSummary, error) {
+func runUpdatePaths(env *config.Environment, manifestPath, lockPath, vendorDir, targetMod string, requireAboutXML, dryRun bool) (*UpdateSummary, error) {
 	mf, err := manifest.LoadManifest(manifestPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load manifest: %w", err)
@@ -179,7 +187,7 @@ func runUpdatePaths(env *config.Environment, manifestPath, lockPath, vendorDir, 
 		}
 
 		currentLock, hasLock := lf.Mods[modID]
-		validCache, cacheReason := fetcher.ValidateCacheInDir(vendorDir, modID, entry, true)
+		validCache, cacheReason := fetcher.ValidateCacheInDir(vendorDir, modID, entry, requireAboutXML)
 
 		switch source {
 		case "steam_workshop":
@@ -247,7 +255,7 @@ func runUpdatePaths(env *config.Environment, manifestPath, lockPath, vendorDir, 
 
 		case "github_release":
 			fmt.Printf("Checking %s (GitHub: %s)...\n", modID, entry.Repo)
-			tag, pubAt, assetName, err := CheckGitHubReleaseDetails(entry.Repo, entry.Tag)
+			tag, pubAt, assetName, err := CheckGitHubReleaseDetails(entry.Repo, entry.Tag, entry.Asset)
 			if err != nil {
 				summary.Errors[modID] = err
 				fmt.Printf("  [WARN] Failed to query GitHub API: %v\n", err)

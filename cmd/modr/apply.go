@@ -96,6 +96,7 @@ func runApply(env *config.Environment, dryRun bool) error {
 	// Step 2: Symlink deployment
 	fmt.Printf("\n%s==> Step 2: Reconciling mod symlinks...%s\n", colorBold, colorReset)
 	l := linker.NewWorkspaceLinker(env, mf, paths.ModsDir, ws.VendorDir, ws.CustomDir, ws.ForkedDir)
+	l.RequireAboutXML = (driver.Name() == "rimworld")
 	linkResults, err := l.LinkAll(dryRun)
 	if err != nil {
 		return fmt.Errorf("symlink reconciliation failed: %w", err)

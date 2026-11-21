@@ -53,8 +53,26 @@ func (g *GenericDriver) ResolvePaths(env *config.Environment, ws *workspace.Work
 			if machinePaths, ok := ws.Spec.Paths[alias]; ok {
 				if mDir, ok := machinePaths["mods_dir"]; ok && mDir != "" {
 					cfgDir := machinePaths["config_dir"]
+					gDir := machinePaths["game_dir"]
+					resolvedMDir := expandPath(mDir, home)
+					resolvedGDir := expandPath(gDir, home)
+					if resolvedGDir == "" && strings.Contains(resolvedMDir, "BepInEx") {
+						// Infer game root from BepInEx/plugins parent
+						resolvedGDir = filepath.Dir(filepath.Dir(resolvedMDir))
+					}
+					// If on Steam Deck and the primary directory doesn't exist, check SD card mounts
+					if env.Machine == "steam-deck" {
+						if _, err := os.Stat(resolvedGDir); err != nil {
+							globPattern := filepath.Join("/run/media", "*", "steamapps", "common", filepath.Base(resolvedGDir))
+							if matches, _ := filepath.Glob(globPattern); len(matches) > 0 {
+								resolvedGDir = matches[0]
+								resolvedMDir = filepath.Join(resolvedGDir, "BepInEx", "plugins")
+							}
+						}
+					}
 					return &games.GamePaths{
-						ModsDir:   expandPath(mDir, home),
+						GameDir:   resolvedGDir,
+						ModsDir:   resolvedMDir,
 						ConfigDir: expandPath(cfgDir, home),
 					}, nil
 				}
@@ -66,6 +84,19 @@ func (g *GenericDriver) ResolvePaths(env *config.Environment, ws *workspace.Work
 }
 
 func (g *GenericDriver) PreApply(env *config.Environment, ws *workspace.Workspace, mf *manifest.Manifest, dryRun bool) error {
+	paths, err := g.ResolvePaths(env, ws)
+	if err != nil {
+		return err
+	}
+	if ws.Spec != nil && ws.Spec.Framework != nil {
+		disp := ws.GameName
+		if ws.Spec.DisplayName != "" {
+			disp = ws.Spec.DisplayName
+		}
+		if err := EnsureFramework(ws.Spec.Framework, paths, disp, dryRun); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

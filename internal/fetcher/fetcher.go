@@ -142,6 +142,37 @@ func FetchModToDir(env *config.Environment, vendorDir, modID string, entry manif
 		}
 		return FetchGitRepo(modID, entry.URL, entry.Branch, destDir, dryRun)
 
+	case "archive", "local_archive", "manual":
+		if fi, err := os.Stat(destDir); err == nil && fi.IsDir() {
+			if entries, err := os.ReadDir(destDir); err == nil && len(entries) > 0 {
+				return nil
+			}
+		}
+		if entry.URL != "" {
+			expanded := entry.URL
+			if strings.HasPrefix(expanded, "~/") {
+				if home, err := os.UserHomeDir(); err == nil {
+					expanded = filepath.Join(home, strings.TrimPrefix(expanded, "~/"))
+				}
+			}
+			if _, err := os.Stat(expanded); err == nil {
+				if dryRun {
+					fmt.Printf("  [DRY-RUN] Would unpack archive %s into %s\n", expanded, destDir)
+					return nil
+				}
+				if strings.HasSuffix(strings.ToLower(expanded), ".zip") {
+					_ = os.RemoveAll(destDir)
+					_ = os.MkdirAll(destDir, 0755)
+					if err := UnzipToDir(expanded, destDir); err != nil {
+						return err
+					}
+					NormalizePluginDirs(destDir)
+					return nil
+				}
+			}
+		}
+		return fmt.Errorf("mod '%s' is an archive-based mod missing from cache %s (re-import with 'modr import <archive.zip>')", modID, destDir)
+
 	case "custom", "local", "fork", "forked":
 		return nil
 
@@ -248,7 +279,7 @@ func FetchGitHubRelease(modID, repo, tag, assetName, destDir string, dryRun bool
 
 	downloadURL := ""
 	for _, asset := range releaseData.Assets {
-		if assetName != "" && asset.Name == assetName {
+		if assetName != "" && (asset.Name == assetName || strings.Contains(asset.Name, assetName)) {
 			downloadURL = asset.BrowserDownloadURL
 			break
 		}
@@ -297,7 +328,11 @@ func FetchGitHubRelease(modID, repo, tag, assetName, destDir string, dryRun bool
 		return err
 	}
 
-	return UnzipToDir(tempFile.Name(), destDir)
+	if err := UnzipToDir(tempFile.Name(), destDir); err != nil {
+		return err
+	}
+	NormalizePluginDirs(destDir)
+	return nil
 }
 
 // FetchGitRepo clones or pulls a git repository.

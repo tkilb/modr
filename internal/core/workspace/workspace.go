@@ -9,11 +9,19 @@ import (
 	"rimworld-mods/internal/manifest"
 )
 
+// FrameworkSpec defines a modding runtime/loader (e.g. BepInEx 5) required by the game
+type FrameworkSpec struct {
+	Type    string `yaml:"type"`
+	Version string `yaml:"version"`
+	URL     string `yaml:"url"`
+}
+
 // GameSpec holds configuration from game.yaml
 type GameSpec struct {
 	Name        string                       `yaml:"name"`
 	DisplayName string                       `yaml:"display_name"`
 	Driver      string                       `yaml:"driver"`
+	Framework   *FrameworkSpec               `yaml:"framework,omitempty"`
 	Paths       map[string]map[string]string `yaml:"paths"`
 }
 
