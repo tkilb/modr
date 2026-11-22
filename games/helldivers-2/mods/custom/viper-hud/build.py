@@ -48,7 +48,7 @@ local chef = ... or rawget(_G, "chef")
 
 local ViperHUD = {
     name = "Viper HUD",
-    version = "1.2.3",
+    version = "1.2.7",
     author = "tylerkilburn",
     enabled = true,
 }
@@ -59,7 +59,15 @@ local state = {
     last_active_weapon = nil,
     logged_mission_start = false,
     logged_active_goid = nil,
+    last_eruptor_state = nil,
+    logged_grip = nil,
+    eruptor_cycle_start = 0,
+    eruptor_was_cycling = false,
+    eruptor_jammed = false,
+    active_goid = nil,
 }
+
+local current_world_id = nil
 
 -- Known weapon network IDs & default types
 local WEAPONS = {
@@ -205,6 +213,29 @@ local WEAPONS = {
   { name = "ny71w4j", id = "fe760204" },
 }
 
+local SEED_GRIPS = {
+  ["0fe87029"] = 5,  ["1220e497"] = 1,  ["15ae0889"] = 10, ["17783758"] = 52,
+  ["17b02218"] = 80, ["1d3b01d7"] = 36, ["2166c7a1"] = 70, ["26acc614"] = 61,
+  ["2ddd091d"] = 60, ["2df95dfe"] = 15, ["30294946"] = 10, ["314a1bf5"] = 20,
+  ["3244dc49"] = 10, ["3622f8dc"] = 70, ["362577f7"] = 1,  ["366d3622"] = 20,
+  ["36fcbd00"] = 70, ["3b60cae4"] = 9,  ["3d538455"] = 20, ["42a6b5ba"] = 10,
+  ["437d9eed"] = 5,  ["4e87d68d"] = 9,  ["521229d8"] = 10, ["5590232e"] = 70,
+  ["56e55184"] = 70, ["656d507b"] = 51, ["6b2c3bed"] = 42, ["6b47e064"] = 50,
+  ["6ec2a850"] = 21, ["7bfb2e06"] = 22, ["7dce85e3"] = 15, ["82a8d3c2"] = 10,
+  ["83d1036e"] = 20, ["8a3c6fee"] = 20, ["8c0aee6e"] = 51, ["8fcdd35c"] = 10,
+  ["9e18f0cf"] = 51, ["9f16a5a2"] = 10, ["a4eff4fa"] = 52, ["b2bfd847"] = 20,
+  ["b3246bb7"] = 50, ["ba161726"] = 14, ["c7dfd9eb"] = 36, ["c920c2d3"] = 1,
+  ["cfaa9ddc"] = 10, ["d100e0c8"] = 20, ["d496b132"] = 15, ["d724a2f9"] = 20,
+  ["e645b6ee"] = 10, ["f18d75e5"] = 15, ["f94a73b3"] = 1,  ["fd585726"] = 1,
+  ["feae4480"] = 1,
+}
+
+for _, w in ipairs(WEAPONS) do
+  if not w.grip and SEED_GRIPS[w.id] then
+    w.grip = SEED_GRIPS[w.id]
+  end
+end
+
 -- Normalize ID for robust matching
 local function norm_id(id)
     if type(id) == 'number' then
@@ -285,6 +316,11 @@ if chef and chef.watch then
 end
 
 local function get_my_unit()
+    if not avatar_watch and chef and chef.watch then
+        pcall(function()
+            avatar_watch = chef.watch({ [AVATAR_RESOURCE] = true }, 2)
+        end)
+    end
     if not avatar_watch or not avatar_watch.items or #avatar_watch.items == 0 then
         return nil
     end
@@ -309,23 +345,57 @@ local function get_my_unit()
     return best_u
 end
 
-local grip_var_idx = nil
+local grip_index = {}
 local function get_hand_grip()
     local u = get_my_unit()
     if not u or not chef.unit_alive or chef.unit_alive(u) ~= true then return nil end
-    if not grip_var_idx then
-        local ok, idx = pcall(chef.call, 'Unit.animation_find_variable', u, 'weapon_selected')
-        if ok and type(idx) == 'number' then
-            grip_var_idx = idx
+
+    local ok_asm, has_asm = pcall(chef.call, 'Unit.has_animation_state_machine', u)
+    if not ok_asm or has_asm ~= true then return nil end
+
+    local idx = grip_index[u]
+    if not idx then
+        local ok_has, has_var = pcall(chef.call, 'Unit.animation_has_variable', u, 'weapon_selected')
+        if not ok_has or has_var ~= true then return nil end
+
+        local ok, find_idx = pcall(chef.call, 'Unit.animation_find_variable', u, 'weapon_selected')
+        if ok and type(find_idx) == 'number' then
+            idx = find_idx
+            grip_index[u] = idx
         end
     end
-    if grip_var_idx then
-        local ok, val = pcall(chef.call, 'Unit.animation_get_variable', u, grip_var_idx)
+
+    if idx then
+        local ok, val = pcall(chef.call, 'Unit.animation_get_variable', u, idx)
         if ok and type(val) == 'number' then
             return math.floor(val + 0.5)
         end
     end
     return nil
+end
+
+local function check_world_change()
+    if not chef or not chef.world_id then return end
+    local wid = chef.world_id()
+    if wid ~= current_world_id then
+        current_world_id = wid
+        type_cache = {}
+        type_fields_cache = {}
+        grip_index = {}
+        state.last_active_weapon = nil
+        state.mission_time = 0
+        state.logged_mission_start = false
+        state.logged_active_goid = nil
+        state.eruptor_cycle_start = 0
+        state.eruptor_was_cycling = false
+        state.eruptor_jammed = false
+        state.active_goid = nil
+        if chef.watch then
+            pcall(function()
+                avatar_watch = chef.watch({ [AVATAR_RESOURCE] = true }, 2)
+            end)
+        end
+    end
 end
 
 if chef and chef.option then
@@ -465,6 +535,8 @@ end
 function ViperHUD.update(dt)
     if not ViperHUD.enabled or not chef then return end
 
+    check_world_change()
+
     if not chef.in_mission or not chef.in_mission() then
         state.mission_time = 0
         state.logged_mission_start = false
@@ -495,6 +567,12 @@ function ViperHUD.update(dt)
 
     local w = get_active_weapon()
 
+    local weapon_swapped = false
+    if w and w.goid ~= state.active_goid then
+        weapon_swapped = true
+        state.active_goid = w.goid
+    end
+
     if w and w.goid ~= state.logged_active_goid and chef.log then
         state.logged_active_goid = w.goid
         chef.log(string.format("[viper_hud] Active weapon: %s (goid=%s, held=%s, fm=%s, opt=%s, chamber=%s, rl=%s)",
@@ -502,7 +580,13 @@ function ViperHUD.update(dt)
             tostring(w.fire_mode), tostring(w.options), tostring(w.chamber), tostring(w.reload_stage)))
     end
 
-    -- Feature 1: Fire Mode Indicator (Option B: Bottom-Right Weapon Wing)
+    local grip = get_hand_grip()
+    if grip and grip ~= state.logged_grip and chef.log then
+        state.logged_grip = grip
+        chef.log(string.format("[viper_hud] Hand grip pose: %d", grip))
+    end
+
+    -- Feature 1: Fire Mode Indicator (Centered Horizontally, Y Preserved)
     local show_fire = true
     if chef.get then
         local opt = chef.get("fire_mode_enabled")
@@ -510,12 +594,6 @@ function ViperHUD.update(dt)
     end
 
     if show_fire and w and chef.rect and chef.text and chef.color then
-        local offset_x = (chef.get and chef.get("wing_offset_x")) or -290
-        local offset_y = (chef.get and chef.get("wing_offset_y")) or 120
-
-        local pos_x = sw + offset_x
-        local pos_y = offset_y
-
         local label = "[ AUTO ]"
         local txt_col = chef.color(255, 170, 40, 240)
 
@@ -558,6 +636,10 @@ function ViperHUD.update(dt)
         local panel_w = text_w + 24
         local panel_h = 24
 
+        local offset_y = (chef.get and chef.get("wing_offset_y")) or 120
+        local pos_x = math.floor((sw / 2) - (panel_w / 2))
+        local pos_y = offset_y
+
         local bg_col = chef.color(10, 15, 22, 215)
         chef.rect(pos_x, pos_y, panel_w, panel_h, bg_col, layer_bg)
         chef.text(pos_x + 12, pos_y + 4, label, px, txt_col, layer_fg)
@@ -571,18 +653,44 @@ function ViperHUD.update(dt)
     end
 
     if show_jam and w and w.is_eruptor and chef.rect and chef.text and chef.color then
-        local in_hand = (w.held == true) or (get_hand_grip() == 10)
-        local is_cycling = (w.reload_stage ~= 0)
-        local has_ammo = (w.rounds == nil or w.rounds > 0)
-        local is_jammed = in_hand and (w.chamber == false and not is_cycling and has_ammo and state.mission_time > 2.0)
+        local has_ammo = (w.rounds ~= nil and w.rounds > 0)
+        local is_bolt_needed = (w.reload_stage == 2048)
+
+        if not has_ammo or not is_bolt_needed or state.mission_time < 2.0 then
+            state.eruptor_was_cycling = false
+            state.eruptor_jammed = false
+        else
+            if not state.eruptor_was_cycling then
+                state.eruptor_was_cycling = true
+                state.eruptor_cycle_start = state.total_time
+                if weapon_swapped then
+                    state.eruptor_jammed = true
+                end
+            else
+                if (grip == 0) or ((state.total_time - state.eruptor_cycle_start) > 1.45) then
+                    state.eruptor_jammed = true
+                end
+            end
+        end
+
+        local is_jammed = state.eruptor_jammed
+
+        if chef.log then
+            local key = tostring(w.reload_stage) .. ":" .. tostring(w.rounds) .. ":" .. tostring(is_jammed)
+            if state.last_eruptor_state ~= key then
+                state.last_eruptor_state = key
+                chef.log(string.format("[viper_hud] ERUPTOR STATE: rl=%s, rounds=%s, is_jammed=%s",
+                    tostring(w.reload_stage), tostring(w.rounds), tostring(is_jammed)))
+            end
+        end
 
         if is_jammed then
             local jam_text = "[ ! ] JAMMED"
             local text_w = (chef.text_width and chef.text_width(jam_text, px)) or 95
             local alert_w = text_w + 24
             local alert_h = 24
-            local alert_x = (sw / 2) - (alert_w / 2)
-            local alert_y = (sh / 2) - 45
+            local alert_x = math.floor((sw / 2) - (alert_w / 2))
+            local alert_y = math.floor((sh / 2) - 45)
 
             local pulse = math.sin(state.total_time * 8.0)
             local alert_col = (pulse > 0) and chef.color(255, 45, 45, 245) or chef.color(255, 140, 30, 245)
