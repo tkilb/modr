@@ -168,7 +168,7 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 
 				// Link status
 				linkPath := filepath.Join(paths.ModsDir, id)
-				linkText, linkColor := checkLinkStatus(linkPath, cachedPath)
+				linkText, linkColor := checkModLinkStatus(paths.ModsDir, linkPath, cachedPath)
 				if linkText == "Linked" {
 					linkedCount++
 				}
@@ -247,7 +247,10 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 				}
 
 				linkPath := filepath.Join(paths.ModsDir, cID)
-				linkText, linkColor := checkLinkStatus(linkPath, cPath)
+				linkText, linkColor := checkModLinkStatus(paths.ModsDir, linkPath, cPath)
+				if linkText == "Linked" {
+					linkedCount++
+				}
 
 				fmt.Printf("%s %s %s %s\n",
 					pad(cID, 24),
@@ -307,7 +310,10 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 				}
 
 				linkPath := filepath.Join(paths.ModsDir, fID)
-				linkText, linkColor := checkLinkStatus(linkPath, fPath)
+				linkText, linkColor := checkModLinkStatus(paths.ModsDir, linkPath, fPath)
+				if linkText == "Linked" {
+					linkedCount++
+				}
 
 				fmt.Printf("%s %s %s %s %s\n",
 					pad(fID, 24),
@@ -338,6 +344,41 @@ func newStatusCmd(env *config.Environment) *cobra.Command {
 
 	cmd.Flags().BoolVarP(&checkDeck, "check-deck", "d", false, "Test SSH connectivity to Steam Deck")
 	return cmd
+}
+
+func checkModLinkStatus(modsDir, linkPath, expectedTarget string) (string, string) {
+	// First check direct folder symlink (standard RimWorld / Star Valor layout)
+	status, color := checkLinkStatus(linkPath, expectedTarget)
+	if status == "Linked" {
+		return status, color
+	}
+
+	// For games with file-level patch linking (e.g. Helldivers 2), check if files in expectedTarget are symlinked in modsDir
+	if expectedTarget != "" && modsDir != "" {
+		expAbs, _ := filepath.Abs(expectedTarget)
+		if entries, err := os.ReadDir(modsDir); err == nil {
+			for _, e := range entries {
+				destPath := filepath.Join(modsDir, e.Name())
+				fi, err := os.Lstat(destPath)
+				if err == nil && (fi.Mode()&os.ModeSymlink) != 0 {
+					target, err := os.Readlink(destPath)
+					if err == nil {
+						var absTarget string
+						if filepath.IsAbs(target) {
+							absTarget = filepath.Clean(target)
+						} else {
+							absTarget = filepath.Clean(filepath.Join(modsDir, target))
+						}
+						if strings.HasPrefix(absTarget, expAbs) {
+							return "Linked", colorGreen
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return status, color
 }
 
 func checkLinkStatus(linkPath, expectedTarget string) (string, string) {

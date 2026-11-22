@@ -37,6 +37,9 @@ func newDeckCmd(env *config.Environment) *cobra.Command {
 			targetGame := ""
 			ws, _, err := resolveTargetWorkspace(env)
 			if err == nil && ws != nil {
+				if !ws.SupportsSteamDeck() {
+					return fmt.Errorf("game %q is not supported on Steam Deck and cannot be synchronized to Steam Deck", ws.GameName)
+				}
 				targetGame = ws.GameName
 			}
 
@@ -60,6 +63,10 @@ func newDeckCmd(env *config.Environment) *cobra.Command {
 		Use:   "pull",
 		Short: "Interactive TUI to cherry-pick Steam Workshop mods from Steam Deck",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ws, _, err := resolveTargetWorkspace(env)
+			if err == nil && ws != nil && !ws.SupportsSteamDeck() {
+				return fmt.Errorf("game %q is not supported on Steam Deck and cannot be pulled from Steam Deck", ws.GameName)
+			}
 			return deck.Pull(env, pullDryRun, pullCopyFiles, pullShowAll)
 		},
 	}

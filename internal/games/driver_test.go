@@ -7,6 +7,7 @@ import (
 	"rimworld-mods/internal/core/workspace"
 	"rimworld-mods/internal/games"
 	_ "rimworld-mods/internal/games/generic"
+	_ "rimworld-mods/internal/games/hd2"
 	_ "rimworld-mods/internal/games/rimworld"
 )
 
@@ -25,6 +26,22 @@ func TestGetDriver(t *testing.T) {
 	}
 	if gen.Name() != "generic" {
 		t.Errorf("expected name 'generic', got %s", gen.Name())
+	}
+
+	hd, err := games.GetDriver("hd2")
+	if err != nil {
+		t.Fatalf("failed to get hd2 driver: %v", err)
+	}
+	if hd.Name() != "hd2" {
+		t.Errorf("expected name 'hd2', got %s", hd.Name())
+	}
+
+	h2, err := games.GetDriver("helldivers2")
+	if err != nil {
+		t.Fatalf("failed to get helldivers2 driver: %v", err)
+	}
+	if h2.Name() != "helldivers2" {
+		t.Errorf("expected name 'helldivers2', got %s", h2.Name())
 	}
 
 	// Unknown driver should fall back to generic

@@ -53,6 +53,10 @@ This state is scoped to your current terminal session and does not alter global 
 				return fmt.Errorf("unknown game %q. Available games: %s", targetGame, strings.Join(available, ", "))
 			}
 
+			if env.Machine == "steam-deck" && !ws.SupportsSteamDeck() {
+				return fmt.Errorf("game %q is not supported on Steam Deck and cannot be used on this device", targetGame)
+			}
+
 			if err := sessionMgr.SetActiveGame(targetGame); err != nil {
 				return fmt.Errorf("failed to set session context: %w", err)
 			}
@@ -111,6 +115,10 @@ func newGamesCmd(env *config.Environment) *cobra.Command {
 				if g == active {
 					marker = "* "
 					color = colorCyan
+				}
+
+				if !ws.SupportsSteamDeck() {
+					disp = disp + " (No Steam Deck)"
 				}
 
 				fmt.Printf("%s%s %s %s\n",

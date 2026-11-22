@@ -28,6 +28,10 @@ func (g *GenericDriver) DisplayName() string {
 }
 
 func (g *GenericDriver) ResolvePaths(env *config.Environment, ws *workspace.Workspace) (*games.GamePaths, error) {
+	if env.Machine == "steam-deck" && ws != nil && !ws.SupportsSteamDeck() {
+		return nil, fmt.Errorf("game %s is not supported on Steam Deck", ws.GameName)
+	}
+
 	home, _ := os.UserHomeDir()
 
 	// Check environment variable override: e.g. MODR_STARVALOR_MODS_DIR or MODR_MODS_DIR

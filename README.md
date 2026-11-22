@@ -5,6 +5,7 @@ Centralized control center for managing, versioning, authoring, and deploying ga
 Currently supported games:
 - **RimWorld:** Topological dependency sorting (`About.xml`), official DLC management, and automatic `ModsConfig.xml` deployment.
 - **Star Valor:** Generic BepInEx mod management and plugin symlinking.
+- **Helldivers 2:** Sequential patch stacking (`.patch_0`, `.patch_1`, ...) and safe symlink deployment into game `data/`. *(Desktop/Laptop only; strictly blocked on Steam Deck).*
 
 ---
 
@@ -102,8 +103,12 @@ modr deck push                 # Sync and reconcile remote game setup
 │   │   ├── game.yaml            # Paths & driver spec (driver: rimworld)
 │   │   ├── manifests/           # mods.yaml, mods.lock.yaml
 │   │   └── mods/                # vendor/ (cache), forked/, custom/
-│   └── starvalor/               # Star Valor workspace
-│       ├── game.yaml            # Paths & driver spec (driver: generic)
+│   ├── starvalor/               # Star Valor workspace
+│   │   ├── game.yaml            # Paths & driver spec (driver: generic)
+│   │   ├── manifests/           # mods.yaml, mods.lock.yaml
+│   │   └── mods/                # vendor/ (cache), forked/, custom/
+│   └── helldivers-2/            # Helldivers 2 workspace (CLI: helldivers2, hd2; no Steam Deck)
+│       ├── game.yaml            # Paths & driver spec (driver: hd2, allow_steam_deck: false)
 │       ├── manifests/           # mods.yaml, mods.lock.yaml
 │       └── mods/                # vendor/ (cache), forked/, custom/
 └── templates/                   # Starter templates for custom mod scaffolding

@@ -15,6 +15,7 @@ This repository is a centralized personal monorepo for managing, versioning, aut
 - **Game Driver Engine (`internal/games`):** Pluggable driver interface:
   - `RimWorldDriver`: Topological DAG sorting over `About.xml` metadata (`internal/order`) and automatic `ModsConfig.xml` deployment.
   - `GenericDriver`: Drop-in symlink manager for games requiring simple folder injection (e.g. BepInEx plugins in Star Valor).
+  - `HD2Driver`: Helldivers 2 driver with patch stacking (`.patch_0`, `.patch_1`, ...) and safe symlink reconciliation in `data/`. Strictly disallows Steam Deck execution and synchronization.
 - **Decoupled Mod Management:** Bypasses Steam Workshop client lock-in using CLI fetching (`steamcmd`, GitHub releases, git repos).
 - **Deterministic Pinning:** Uses declarative manifests and lockfiles with rollback capabilities.
 - **Idempotent Deployment:** Symlinks cached vendor mods, forked patches, and custom mods directly into game targets.
@@ -52,8 +53,12 @@ This repository is a centralized personal monorepo for managing, versioning, aut
 │   │   ├── game.yaml            # Paths & driver spec (driver: rimworld)
 │   │   ├── manifests/           # mods.yaml, mods.lock.yaml
 │   │   └── mods/                # vendor/ (cache), forked/, custom/
-│   └── starvalor/               # Star Valor workspace
-│       ├── game.yaml            # Paths & driver spec (driver: generic)
+│   ├── starvalor/               # Star Valor workspace
+│   │   ├── game.yaml            # Paths & driver spec (driver: generic)
+│   │   ├── manifests/           # mods.yaml, mods.lock.yaml
+│   │   └── mods/                # vendor/ (cache), forked/, custom/
+│   └── helldivers-2/            # Helldivers 2 workspace (CLI: helldivers2, hd2; no Steam Deck)
+│       ├── game.yaml            # Paths & driver spec (driver: hd2, allow_steam_deck: false)
 │       ├── manifests/           # mods.yaml, mods.lock.yaml
 │       └── mods/                # vendor/ (cache), forked/, custom/
 └── templates/                   # Starter templates for custom mod scaffolding

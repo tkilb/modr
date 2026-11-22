@@ -1,0 +1,17 @@
+# Helldivers 2 Mod Manifest
+# Declarative specification for Helldivers 2 mods.
+# NOTE: Helldivers 2 is strictly disallowed on Steam Deck.
+mods:
+  diligence-scope:
+    name: "Diligence Scope"
+    source: custom
+    enabled: true
+    priority: 10
+    description: "Scope and reticle enhancement for the R-63 Diligence"
+
+  dark-talon:
+    name: "Dark Talon"
+    source: custom
+    enabled: true
+    priority: 20
+    description: "Dark Talon armor modification (Nexus ID: 3696)"

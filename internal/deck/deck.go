@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"rimworld-mods/internal/config"
+	"rimworld-mods/internal/core/workspace"
 )
 
 // CheckConnection tests SSH connection to the Steam Deck.
@@ -33,6 +34,13 @@ func Push(env *config.Environment, dryRun bool, checkOnly bool) error {
 
 // PushGame synchronizes the monorepo to Steam Deck and reconciles a specific game or active context.
 func PushGame(env *config.Environment, gameName string, dryRun bool, checkOnly bool) error {
+	if gameName != "" {
+		ws, err := workspace.FindWorkspace(env.RepoRoot, gameName)
+		if err == nil && ws != nil && !ws.SupportsSteamDeck() {
+			return fmt.Errorf("game %q is not supported on Steam Deck and cannot be synchronized to Steam Deck", gameName)
+		}
+	}
+
 	deckHost := env.DeckHost
 	if deckHost == "" {
 		deckHost = "steamdeck"
@@ -86,6 +94,16 @@ func PushGame(env *config.Environment, gameName string, dryRun bool, checkOnly b
 		"--exclude=*.swp",
 		"--exclude=*~",
 		"--exclude=.DS_Store",
+	}
+
+	// Exclude games that do not support Steam Deck (e.g. Helldivers 2)
+	if allWorkspaces, err := workspace.ListWorkspaces(env.RepoRoot); err == nil {
+		for _, wName := range allWorkspaces {
+			w, err := workspace.FindWorkspace(env.RepoRoot, wName)
+			if err == nil && w != nil && !w.SupportsSteamDeck() {
+				rsyncArgs = append(rsyncArgs, fmt.Sprintf("--exclude=games/%s/", filepath.Base(w.RootDir)))
+			}
+		}
 	}
 
 	if dryRun {

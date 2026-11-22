@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	"rimworld-mods/internal/manifest"
@@ -18,11 +19,39 @@ type FrameworkSpec struct {
 
 // GameSpec holds configuration from game.yaml
 type GameSpec struct {
-	Name        string                       `yaml:"name"`
-	DisplayName string                       `yaml:"display_name"`
-	Driver      string                       `yaml:"driver"`
-	Framework   *FrameworkSpec               `yaml:"framework,omitempty"`
-	Paths       map[string]map[string]string `yaml:"paths"`
+	Name           string                       `yaml:"name"`
+	DisplayName    string                       `yaml:"display_name"`
+	Aliases        []string                     `yaml:"aliases,omitempty"`
+	Driver         string                       `yaml:"driver"`
+	AllowSteamDeck *bool                        `yaml:"allow_steam_deck,omitempty"`
+	SteamDeck      *bool                        `yaml:"steam_deck,omitempty"`
+	Framework      *FrameworkSpec               `yaml:"framework,omitempty"`
+	Paths          map[string]map[string]string `yaml:"paths"`
+}
+
+// SupportsSteamDeck reports whether the game is permitted to run on or sync to Steam Deck.
+// Any game can omit Steam Deck support generically by:
+//  1. Setting `allow_steam_deck: false` or `steam_deck: false` in its game.yaml
+//  2. Omitting `steam-deck` / `steamdeck` from its declared paths map
+func (s *GameSpec) SupportsSteamDeck() bool {
+	if s == nil {
+		return true
+	}
+	if s.AllowSteamDeck != nil {
+		return *s.AllowSteamDeck
+	}
+	if s.SteamDeck != nil {
+		return *s.SteamDeck
+	}
+	// If machine paths are explicitly declared but Steam Deck is omitted, treat as unsupported
+	if len(s.Paths) > 0 {
+		_, hasDeck := s.Paths["steam-deck"]
+		_, hasDeckAlias := s.Paths["steamdeck"]
+		if !hasDeck && !hasDeckAlias {
+			return false
+		}
+	}
+	return true
 }
 
 // Workspace represents a game's isolated mod management space in games/<game>
@@ -37,7 +66,47 @@ type Workspace struct {
 	Spec         *GameSpec
 }
 
+// SupportsSteamDeck reports whether the workspace is permitted to run on or sync to Steam Deck
+func (w *Workspace) SupportsSteamDeck() bool {
+	if w == nil {
+		return true
+	}
+	if w.Spec != nil {
+		return w.Spec.SupportsSteamDeck()
+	}
+	return true
+}
+
+// normalizeName strips hyphens, underscores, and lowercases a game identifier for flexible matching
+func normalizeName(name string) string {
+	s := strings.ToLower(strings.TrimSpace(name))
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, "_", "")
+	return s
+}
+
+// MatchesGame reports whether a name or alias matches this specification
+func (s *GameSpec) MatchesGame(query string) bool {
+	if s == nil {
+		return false
+	}
+	qNorm := normalizeName(query)
+	if normalizeName(s.Name) == qNorm {
+		return true
+	}
+	if normalizeName(s.DisplayName) == qNorm {
+		return true
+	}
+	for _, a := range s.Aliases {
+		if normalizeName(a) == qNorm {
+			return true
+		}
+	}
+	return false
+}
+
 // FindWorkspace resolves a game workspace within repoRoot/games/<gameName>
+// It resolves exact directory matches first, then matches against game.yaml spec name and aliases.
 func FindWorkspace(repoRoot, gameName string) (*Workspace, error) {
 	if gameName == "" {
 		return nil, fmt.Errorf("game name cannot be empty")
@@ -45,10 +114,35 @@ func FindWorkspace(repoRoot, gameName string) (*Workspace, error) {
 
 	gameDir := filepath.Join(repoRoot, "games", gameName)
 	fi, err := os.Stat(gameDir)
-	if err != nil || !fi.IsDir() {
-		return nil, fmt.Errorf("game workspace not found at %s: %w", gameDir, err)
+	if err == nil && fi.IsDir() {
+		return loadWorkspaceFromDir(gameDir, gameName)
 	}
 
+	// If direct directory does not match, inspect all games/* directories for spec name or aliases
+	allGames, err := ListWorkspaces(repoRoot)
+	if err == nil {
+		qNorm := normalizeName(gameName)
+		for _, dirName := range allGames {
+			candidateDir := filepath.Join(repoRoot, "games", dirName)
+			if normalizeName(dirName) == qNorm {
+				return loadWorkspaceFromDir(candidateDir, dirName)
+			}
+			specPath := filepath.Join(candidateDir, "game.yaml")
+			if data, err := os.ReadFile(specPath); err == nil {
+				var spec GameSpec
+				if err := yaml.Unmarshal(data, &spec); err == nil {
+					if spec.MatchesGame(gameName) {
+						return loadWorkspaceFromDir(candidateDir, dirName)
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("game workspace not found for %q in %s/games", gameName, repoRoot)
+}
+
+func loadWorkspaceFromDir(gameDir, gameName string) (*Workspace, error) {
 	ws := &Workspace{
 		GameName:     gameName,
 		RootDir:      gameDir,
@@ -59,7 +153,6 @@ func FindWorkspace(repoRoot, gameName string) (*Workspace, error) {
 		CustomDir:    filepath.Join(gameDir, "mods", "custom"),
 	}
 
-	// Read game.yaml if present
 	specPath := filepath.Join(gameDir, "game.yaml")
 	if data, err := os.ReadFile(specPath); err == nil {
 		var spec GameSpec
@@ -76,6 +169,15 @@ func FindWorkspace(repoRoot, gameName string) (*Workspace, error) {
 	}
 
 	return ws, nil
+}
+
+// ResolveGameIdentifier resolves any game alias or name to its directory name and canonical spec name
+func ResolveGameIdentifier(repoRoot, query string) (string, bool) {
+	ws, err := FindWorkspace(repoRoot, query)
+	if err != nil || ws == nil {
+		return "", false
+	}
+	return filepath.Base(ws.RootDir), true
 }
 
 // ListWorkspaces discovers all game workspaces in repoRoot/games/

@@ -1,0 +1,15 @@
+name: helldivers2
+display_name: "Helldivers 2"
+aliases:
+  - helldivers-2
+  - hd2
+driver: hd2
+allow_steam_deck: false
+
+paths:
+  desktop:
+    game_dir: /mnt/gaming/SteamLibrary/steamapps/common/Helldivers 2
+    mods_dir: /mnt/gaming/SteamLibrary/steamapps/common/Helldivers 2/data
+  laptop:
+    game_dir: ~/.local/share/Steam/steamapps/common/Helldivers 2
+    mods_dir: ~/.local/share/Steam/steamapps/common/Helldivers 2/data

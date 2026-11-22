@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 	"rimworld-mods/internal/config"
 	"rimworld-mods/internal/fetcher"
+	"rimworld-mods/internal/games"
 	"rimworld-mods/internal/linker"
 )
 
@@ -95,11 +96,19 @@ func runApply(env *config.Environment, dryRun bool) error {
 
 	// Step 2: Symlink deployment
 	fmt.Printf("\n%s==> Step 2: Reconciling mod symlinks...%s\n", colorBold, colorReset)
-	l := linker.NewWorkspaceLinker(env, mf, paths.ModsDir, ws.VendorDir, ws.CustomDir, ws.ForkedDir)
-	l.RequireAboutXML = (driver.Name() == "rimworld")
-	linkResults, err := l.LinkAll(dryRun)
-	if err != nil {
-		return fmt.Errorf("symlink reconciliation failed: %w", err)
+	var linkResults []linker.LinkResult
+	if deployer, ok := driver.(games.CustomLinkDeployer); ok {
+		linkResults, err = deployer.DeployLinks(env, ws, mf, paths, dryRun)
+		if err != nil {
+			return fmt.Errorf("symlink reconciliation failed: %w", err)
+		}
+	} else {
+		l := linker.NewWorkspaceLinker(env, mf, paths.ModsDir, ws.VendorDir, ws.CustomDir, ws.ForkedDir)
+		l.RequireAboutXML = (driver.Name() == "rimworld")
+		linkResults, err = l.LinkAll(dryRun)
+		if err != nil {
+			return fmt.Errorf("symlink reconciliation failed: %w", err)
+		}
 	}
 
 	for _, res := range linkResults {

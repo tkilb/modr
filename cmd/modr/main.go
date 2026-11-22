@@ -12,6 +12,7 @@ import (
 	"rimworld-mods/internal/core/workspace"
 	"rimworld-mods/internal/games"
 	_ "rimworld-mods/internal/games/generic"
+	_ "rimworld-mods/internal/games/hd2"
 	_ "rimworld-mods/internal/games/rimworld"
 )
 
@@ -101,19 +102,12 @@ func interceptGameArg(env *config.Environment) {
 		return
 	}
 
-	// Check if firstArg matches a known game directory or registered driver
-	knownGames, err := workspace.ListWorkspaces(env.RepoRoot)
-	if err != nil {
+	// Check if firstArg matches a known game directory, alias, or registered driver
+	if dirName, ok := workspace.ResolveGameIdentifier(env.RepoRoot, firstArg); ok {
+		explicitGameArg = dirName
+		// Remove the game name from os.Args
+		os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
 		return
-	}
-
-	for _, g := range knownGames {
-		if strings.EqualFold(g, firstArg) {
-			explicitGameArg = strings.ToLower(firstArg)
-			// Remove the game name from os.Args
-			os.Args = append([]string{os.Args[0]}, os.Args[2:]...)
-			return
-		}
 	}
 }
 
@@ -167,6 +161,14 @@ func resolveTargetWorkspace(env *config.Environment) (*workspace.Workspace, game
 	ws, err := workspace.FindWorkspace(env.RepoRoot, gameName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed resolving workspace for game %q: %w", gameName, err)
+	}
+
+	if env.Machine == "steam-deck" && !ws.SupportsSteamDeck() {
+		disp := ws.GameName
+		if ws.Spec != nil && ws.Spec.DisplayName != "" {
+			disp = ws.Spec.DisplayName
+		}
+		return nil, nil, fmt.Errorf("game %q (%s) is not supported on Steam Deck and cannot be used on this device", ws.GameName, disp)
 	}
 
 	driverName := "generic"

@@ -6,6 +6,7 @@ import (
 
 	"rimworld-mods/internal/config"
 	"rimworld-mods/internal/core/workspace"
+	"rimworld-mods/internal/linker"
 	"rimworld-mods/internal/manifest"
 )
 
@@ -30,6 +31,12 @@ type GameDriver interface {
 	ResolvePaths(env *config.Environment, ws *workspace.Workspace) (*GamePaths, error)
 	PreApply(env *config.Environment, ws *workspace.Workspace, mf *manifest.Manifest, dryRun bool) error
 	PostApply(env *config.Environment, ws *workspace.Workspace, mf *manifest.Manifest, dryRun bool) (*ApplyResult, error)
+}
+
+// CustomLinkDeployer allows a game driver to handle mod file deployment and symlinking
+// (e.g. for games like Helldivers 2 that share base data directories and require patch index sequencing).
+type CustomLinkDeployer interface {
+	DeployLinks(env *config.Environment, ws *workspace.Workspace, mf *manifest.Manifest, paths *GamePaths, dryRun bool) ([]linker.LinkResult, error)
 }
 
 var (
