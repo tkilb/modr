@@ -48,7 +48,7 @@ local chef = ... or rawget(_G, "chef")
 
 local ViperHUD = {
     name = "Viper HUD",
-    version = "1.2.7",
+    version = "1.2.8",
     author = "tylerkilburn",
     enabled = true,
 }
@@ -594,58 +594,64 @@ function ViperHUD.update(dt)
     end
 
     if show_fire and w and chef.rect and chef.text and chef.color then
-        local label = "[ AUTO ]"
+        local label = "AUTO"
         local txt_col = chef.color(255, 170, 40, 240)
 
         if w.is_autocannon then
             local mode_idx = math.floor((w.options or 0) / 4) % 4
             if mode_idx == 1 then
-                label = "[ FLAK ]"
+                label = "FLAK"
                 txt_col = chef.color(50, 210, 255, 255)
             else
-                label = "[ APHET ]"
+                label = "APHET"
                 txt_col = chef.color(255, 125, 30, 255)
             end
         elseif w.is_eruptor then
-            label = "[ BOLT ]"
+            label = "BOLT"
             txt_col = chef.color(255, 180, 50, 240)
         else
             local fm = (w.fire_mode or 0) % 8
             if fm == 2 then
-                label = "[ SEMI ]"
+                label = "SEMI"
                 txt_col = chef.color(140, 240, 140, 240)
             elseif fm == 3 then
-                label = "[ BURST ]"
+                label = "BURST"
                 txt_col = chef.color(80, 200, 255, 240)
             elseif fm == 4 then
-                label = "[ VOLLEY ]"
+                label = "VOLLEY"
                 txt_col = chef.color(200, 120, 255, 240)
             elseif fm == 5 then
-                label = "[ SAFE ]"
+                label = "SAFE"
                 txt_col = chef.color(100, 240, 100, 240)
             elseif fm == 6 then
-                label = "[ UNSAFE ]"
+                label = "UNSAFE"
                 txt_col = chef.color(255, 80, 80, 240)
             else
-                label = "[ AUTO ]"
+                label = "AUTO"
                 txt_col = chef.color(255, 170, 40, 240)
             end
         end
 
-        local text_w = (chef.text_width and chef.text_width(label, px)) or 75
-        local panel_w = text_w + 24
-        local panel_h = 24
+        local text_w = (chef.text_width and chef.text_width(label, px)) or (px * 18)
+        local pad_x = math.max(8, math.floor(px * 4))
+        local panel_w = text_w + pad_x * 2
+
+        local cap_h = px * 8.85
+        local pad_y = math.max(4, math.floor(px * 2))
+        local panel_h = math.floor(cap_h + pad_y * 2)
 
         local offset_y = (chef.get and chef.get("wing_offset_y")) or 120
         local pos_x = math.floor((sw / 2) - (panel_w / 2))
         local pos_y = offset_y
+        local text_x = math.floor(pos_x + (panel_w - text_w) / 2)
+        local text_y = pos_y + pad_y
 
         local bg_col = chef.color(10, 15, 22, 215)
         chef.rect(pos_x, pos_y, panel_w, panel_h, bg_col, layer_bg)
-        chef.text(pos_x + 12, pos_y + 4, label, px, txt_col, layer_fg)
+        chef.text(text_x, text_y, label, px, txt_col, layer_fg)
     end
 
-    -- Feature 2: Eruptor JAMMED Indicator (Directly Under Center Reticle)
+    -- Feature 2: Eruptor JAM Indicator (Directly Under Center Reticle)
     local show_jam = true
     if chef.get then
         local opt = chef.get("jam_alert_enabled")
@@ -685,19 +691,26 @@ function ViperHUD.update(dt)
         end
 
         if is_jammed then
-            local jam_text = "[ ! ] JAMMED"
-            local text_w = (chef.text_width and chef.text_width(jam_text, px)) or 95
-            local alert_w = text_w + 24
-            local alert_h = 24
+            local jam_text = "JAM"
+            local text_w = (chef.text_width and chef.text_width(jam_text, px)) or (px * 16)
+            local pad_x = math.max(8, math.floor(px * 4))
+            local alert_w = text_w + pad_x * 2
+
+            local cap_h = px * 8.85
+            local pad_y = math.max(4, math.floor(px * 2))
+            local alert_h = math.floor(cap_h + pad_y * 2)
+
             local alert_x = math.floor((sw / 2) - (alert_w / 2))
             local alert_y = math.floor((sh / 2) - 45)
+            local text_x = math.floor(alert_x + (alert_w - text_w) / 2)
+            local text_y = alert_y + pad_y
 
             local pulse = math.sin(state.total_time * 8.0)
             local alert_col = (pulse > 0) and chef.color(255, 45, 45, 245) or chef.color(255, 140, 30, 245)
             local bg_col = chef.color(25, 6, 6, 220)
 
             chef.rect(alert_x, alert_y, alert_w, alert_h, bg_col, layer_bg)
-            chef.text(alert_x + 12, alert_y + 4, jam_text, px, alert_col, layer_fg)
+            chef.text(text_x, text_y, jam_text, px, alert_col, layer_fg)
         end
     end
 end
