@@ -21,4 +21,20 @@ mods:
     source: custom
     enabled: true
     priority: 30
-    description: "Tactical combat HUD - Feature 1: Fire mode indicator"
+    description: "Tactical combat HUD - Features 1 & 2: Fire mode & Eruptor jammed indicator"
+
+  boot-mod-loader:
+    name: "Boot Mod Loader"
+    source: vendor
+    enabled: false
+    priority: 40
+    version: "v0.14.1"
+    description: "EAC-compliant Stingray Lua boot mod loader by pat-pat-patrick"
+
+  chef-shared-loader:
+    name: "Chef Shared Loader"
+    source: vendor
+    enabled: true
+    priority: 50
+    version: "v1.5.4"
+    description: "Unified Lua mod manager, in-game F9 configuration menu and crash guard"

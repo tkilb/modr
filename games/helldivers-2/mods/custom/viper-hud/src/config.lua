@@ -1,5 +1,5 @@
 -- Viper HUD Configuration
--- Option B Layout: Tactical Weapon Wing (Bottom-Right)
+-- Option B Layout: Tactical Weapon Wing (Bottom-Right) + Center Jam Alert
 
 local Config = {
     fire_mode = {
@@ -18,12 +18,24 @@ local Config = {
         color_burst = { r = 0.35, g = 0.85, b = 1.0, a = 0.9 }, -- Cyan [ BURST ]
         color_semi  = { r = 0.7, g = 0.95, b = 0.7, a = 0.85 },  -- Light Green [ SEMI ]
         
-        bg_color    = { r = 0.05, g = 0.08, b = 0.12, a = 0.7 }, -- Semi-transparent dark tactical panel
+        bg_color    = { r = 0.05, g = 0.08, b = 0.12, a = 0.7 },
     },
+
+    -- Feature 2: Eruptor JAMMED Alert
+    -- Located directly under the center aiming reticle
     jammed_alert = {
-        enabled = false,
-        offset_y = 60,   -- Directly below center crosshair (Feature 2)
+        enabled = true,
+        offset_y = 55,   -- 55 pixels below screen center (directly under crosshair)
+        font_size = 19,
+        text = "[ ! ] JAMMED",
+        subtext = "RECHAMBER",
+        color_alert = { r = 1.0, g = 0.2, b = 0.2, a = 0.95 },   -- Warning Crimson/Red
+        color_flash = { r = 1.0, g = 0.5, b = 0.1, a = 0.95 },   -- Amber Flash
+        bg_color    = { r = 0.15, g = 0.02, b = 0.02, a = 0.85 }, -- Dark Crimson Warning Pill
+        blink_rate  = 6.0, -- Hz for alert pulse
     },
+
+    -- Upcoming Features in Layout
     stratagem_pips = {
         enabled = false,
         offset_x = -260,
