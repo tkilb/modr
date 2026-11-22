@@ -15,3 +15,10 @@ mods:
     enabled: true
     priority: 20
     description: "Dark Talon armor modification (Nexus ID: 3696)"
+
+  viper-hud:
+    name: "Viper HUD"
+    source: custom
+    enabled: true
+    priority: 30
+    description: "Tactical combat HUD - Feature 1: Fire mode indicator"
