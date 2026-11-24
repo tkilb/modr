@@ -48,7 +48,7 @@ local chef = ... or rawget(_G, "chef")
 
 local ViperHUD = {
     name = "Viper HUD",
-    version = "1.2.8",
+    version = "1.3.5",
     author = "tylerkilburn",
     enabled = true,
 }
@@ -65,6 +65,7 @@ local state = {
     eruptor_was_cycling = false,
     eruptor_jammed = false,
     active_goid = nil,
+    avatar_goid = nil,
 }
 
 local current_world_id = nil
@@ -96,7 +97,7 @@ local WEAPONS = {
   { name = "tnc2nwa", id = "2ddd091d" },
   { name = "jq39fx", id = "2df95dfe" },
   { name = "hxz583a", id = "2f027b59" },
-  { name = "h2zhqia", id = "30294946" },
+  { name = "h2zhqia", id = "30294946", is_sniper = true, grip = 10 },
   { name = "cltj79b", id = "303d2220" },
   { name = "yvdekca", id = "30b55bbc" },
   { name = "hg8xdoa", id = "314a1bf5" },
@@ -116,6 +117,7 @@ local WEAPONS = {
   { name = "v36fp0", id = "4321fb69" },
   { name = "anefmq", id = "48643cfd" },
   { name = "vueow2b", id = "4daea8e1" },
+  { name = "dtkk1fb", id = "4e87d68d", grip = 9 },
   { name = "o6pa72", id = "521229d8" },
   { name = "e11ivoc", id = "530e19df" },
   { name = "a1nulw", id = "5590232e" },
@@ -163,7 +165,7 @@ local WEAPONS = {
   { name = "znvy6p", id = "9e18f0cf" },
   { name = "ia44ole", id = "9f16a5a2" },
   { name = "c8bzfgk", id = "a41ddfcd" },
-  { name = "gqvwvd", id = "a4eff4fa" },
+  { name = "gqvwvd", id = "a4eff4fa", is_sniper = true, grip = 52 },
   { name = "p640rzc", id = "a6445802" },
   { name = "cufoss", id = "a6e06a41" },
   { name = "unppkbd", id = "a9e88c96" },
@@ -173,7 +175,7 @@ local WEAPONS = {
   { name = "v6jii8j", id = "b30f446f" },
   { name = "sv_6kpa", id = "b3246bb7" },
   { name = "f00yfpg", id = "b4a17af7" },
-  { name = "omhdnm", id = "b697955d" },
+  { name = "omhdnm", id = "b697955d", is_sniper = true, grip = 52 },
   { name = "w6vav9", id = "ba161726" },
   { name = "k04_p7e", id = "bd5f17dd" },
   { name = "njgfbx", id = "be9b793e" },
@@ -224,10 +226,10 @@ local SEED_GRIPS = {
   ["6ec2a850"] = 21, ["7bfb2e06"] = 22, ["7dce85e3"] = 15, ["82a8d3c2"] = 10,
   ["83d1036e"] = 20, ["8a3c6fee"] = 20, ["8c0aee6e"] = 51, ["8fcdd35c"] = 10,
   ["9e18f0cf"] = 51, ["9f16a5a2"] = 10, ["a4eff4fa"] = 52, ["b2bfd847"] = 20,
-  ["b3246bb7"] = 50, ["ba161726"] = 14, ["c7dfd9eb"] = 36, ["c920c2d3"] = 1,
-  ["cfaa9ddc"] = 10, ["d100e0c8"] = 20, ["d496b132"] = 15, ["d724a2f9"] = 20,
-  ["e645b6ee"] = 10, ["f18d75e5"] = 15, ["f94a73b3"] = 1,  ["fd585726"] = 1,
-  ["feae4480"] = 1,
+  ["b3246bb7"] = 50, ["b697955d"] = 52, ["ba161726"] = 14, ["c7dfd9eb"] = 36,
+  ["c920c2d3"] = 1,  ["cfaa9ddc"] = 10, ["d100e0c8"] = 20, ["d496b132"] = 15,
+  ["d724a2f9"] = 20, ["e645b6ee"] = 10, ["f18d75e5"] = 15, ["f94a73b3"] = 1,
+  ["fd585726"] = 1,  ["feae4480"] = 1,
 }
 
 for _, w in ipairs(WEAPONS) do
@@ -236,14 +238,18 @@ for _, w in ipairs(WEAPONS) do
   end
 end
 
--- Normalize ID for robust matching
+-- Normalize ID for robust matching (handles 32-bit signed wrap and 64-bit hex)
 local function norm_id(id)
     if type(id) == 'number' then
-        id = string.format('%x', id)
+        if id < 0 then
+            id = id + 4294967296
+        end
+        id = string.format('%x', id % 4294967296)
     elseif type(id) ~= 'string' then
         id = tostring(id or '')
     end
-    return (string.gsub(string.lower(id), '^0+', ''))
+    id = string.gsub(string.lower(id), '^f+', '')
+    return (string.gsub(id, '^0+', ''))
 end
 
 -- Role definitions: ID hash -> default call symbol name
@@ -255,9 +261,11 @@ local ROLES = {
     reload_stage = { id = norm_id("cd889dbc"), name = "r290mha" },
     held         = { id = norm_id("3132608f"), name = "jkcsuw" },
     rounds       = { id = norm_id("d7a5d63e"), name = "hhrfiqc" },
+    aimpt        = { id = norm_id("bdc1cb8a"), name = "npqf7xc" },
+    stratin      = { id = norm_id("95c46304"), name = "ww3bwxa" },
 }
 
--- Dynamic field discovery cache: maps type_name -> { norm_id -> (f.name or true) }
+-- Dynamic field discovery cache: maps type_name -> { norm_id / fname -> (f.name or true) }
 local type_fields_cache = {}
 local type_cache = {}
 
@@ -274,10 +282,16 @@ local function get_type_fields(type_name)
 
     local field_set = {}
     for _, f in ipairs(info.fields) do
-        if type(f) == 'table' and f.id then
-            local nid = norm_id(f.id)
-            if nid then
-                field_set[nid] = (type(f.name) == 'string' and f.name ~= '') and f.name or true
+        if type(f) == 'table' then
+            local fname = (type(f.name) == 'string' and f.name ~= '') and f.name or nil
+            if fname then
+                field_set[fname] = fname
+            end
+            if f.id then
+                local nid = norm_id(f.id)
+                if nid and nid ~= '' then
+                    field_set[nid] = fname or true
+                end
             end
         end
     end
@@ -287,18 +301,23 @@ local function get_type_fields(type_name)
 end
 
 -- Guaranteed crash-free field query: ONLY calls GameSession.game_object_field
--- if the field ID exists in Network.object_info(type_name)!
+-- if the field ID or name exists in Network.object_info(type_name)!
 local function safe_field(s, goid, type_name, role_name)
     local r = ROLES[role_name]
     if not r then return nil end
 
     local live_set = get_type_fields(type_name)
-    if not live_set or not live_set[r.id] then
-        -- This field does not exist on this network type in the running build!
-        return nil
+    if not live_set then return nil end
+
+    local fname = nil
+    if r.id and live_set[r.id] then
+        fname = (type(live_set[r.id]) == 'string') and live_set[r.id] or r.name
+    elseif r.name and live_set[r.name] then
+        fname = r.name
     end
 
-    local fname = (type(live_set[r.id]) == 'string' and live_set[r.id] ~= '') and live_set[r.id] or r.name
+    if not fname then return nil end
+
     local ok, val = pcall(chef.call, 'GameSession.game_object_field', s, goid, fname)
     if ok then
         return val
@@ -315,7 +334,7 @@ if chef and chef.watch then
     end)
 end
 
-local function get_my_unit()
+local function get_my_avatar()
     if not avatar_watch and chef and chef.watch then
         pcall(function()
             avatar_watch = chef.watch({ [AVATAR_RESOURCE] = true }, 2)
@@ -325,24 +344,141 @@ local function get_my_unit()
         return nil
     end
     if #avatar_watch.items == 1 then
-        return avatar_watch.items[1].unit
+        return avatar_watch.items[1]
     end
     local cam = chef.camera and chef.camera()
     if not cam then
-        return avatar_watch.items[1].unit
+        return avatar_watch.items[1]
     end
-    local best_u, best_d = nil, nil
+    local best_it, best_d = nil, nil
     for _, it in ipairs(avatar_watch.items) do
         local dx = it.x - cam.x
         local dy = it.y - cam.y
         local dz = it.z - cam.z
         local d = dx*dx + dy*dy + dz*dz
         if best_d == nil or d < best_d then
-            best_u = it.unit
+            best_it = it
             best_d = d
         end
     end
-    return best_u
+    return best_it
+end
+
+local function get_my_unit()
+    local av = get_my_avatar()
+    return av and av.unit or nil
+end
+
+local head_node_cache = {}
+local HEAD_NAMES = { 'j_head', 'head', 'Head', 'j_Head', 'Bip01_Head', 'j_neck' }
+
+local function get_head_node(u)
+    if not u then return nil end
+    if head_node_cache[u] ~= nil then
+        return head_node_cache[u]
+    end
+    if chef and chef.unit_node then
+        for _, name in ipairs(HEAD_NAMES) do
+            local ok, idx = pcall(chef.unit_node, u, name)
+            if ok and type(idx) == 'number' then
+                head_node_cache[u] = idx
+                return idx
+            end
+        end
+    end
+    head_node_cache[u] = false
+    return nil
+end
+
+local function is_first_person()
+    local cam = chef.camera and chef.camera()
+    if not cam then return false end
+
+    local u = get_my_unit()
+    if u and chef.unit_position then
+        local node = get_head_node(u)
+        if node then
+            local ok, hx, hy, hz = pcall(chef.unit_position, u, node)
+            if ok and type(hx) == 'number' and type(hy) == 'number' and type(hz) == 'number' then
+                local dx = cam.x - hx
+                local dy = cam.y - hy
+                local dz = cam.z - hz
+                -- Camera is right at the head node in first-person scope (< 0.45m -> dist_sq < 0.20)
+                -- In third-person over-the-shoulder, camera is behind shoulder (> 1.4m -> dist_sq > 1.96)
+                return (dx*dx + dy*dy + dz*dz) < 0.35
+            end
+        end
+    end
+
+    -- Fallback if head node not resolved: horizontal camera distance to Helldiver root
+    local av = get_my_avatar()
+    if not av then return false end
+    local dx = cam.x - av.x
+    local dy = cam.y - av.y
+    return (dx*dx + dy*dy) < 0.75
+end
+
+local function parse_vec3(v)
+    if not v then return nil end
+    if type(v) == 'table' then
+        local x = v.x or v[1]
+        local y = v.y or v[2]
+        local z = v.z or v[3]
+        if type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then return x, y, z end
+    end
+    if type(v) == 'userdata' then
+        local ok, x, y, z = pcall(chef.call, 'Vector3.to_elements', v)
+        if ok and type(x) == 'number' and type(y) == 'number' and type(z) == 'number' then
+            return x, y, z
+        end
+    end
+    return nil
+end
+
+local function project_to_screen(x, y, z)
+    if not chef or not chef.world_to_screen then return nil end
+    local ok, sx, sy = pcall(chef.world_to_screen, x, y, z)
+    if ok and type(sx) == 'number' and type(sy) == 'number' then
+        return sx, sy
+    end
+    return nil
+end
+
+local last_aim_time = 0
+local function is_player_aiming(s, av_goid)
+    local raw = false
+    if av_goid and s then
+        local st = safe_field(s, av_goid, "vvhx8ga", "stratin")
+        if st and st == 4 then
+            raw = true
+        end
+    end
+    if not raw and chef.mouse_down then
+        local ok, md = pcall(chef.mouse_down, 'right')
+        if ok and md == true then raw = true end
+    end
+    if not raw then
+        local ok_pad, pad_down = pcall(function()
+            local idx = chef.call('Pad1.button_index', 'left_trigger') or chef.call('Pad1.button_index', 'l2')
+            if idx then
+                local v = chef.call('Pad1.button', idx)
+                return type(v) == 'number' and v > 0.1
+            end
+            return false
+        end)
+        if ok_pad and pad_down == true then raw = true end
+    end
+
+    if raw then
+        last_aim_time = state.total_time
+        return true
+    end
+
+    -- Hold state across 1-2 frame blips (e.g. during trigger pulls / bolt cycle ticks)
+    if (state.total_time - last_aim_time) < 0.15 then
+        return true
+    end
+    return false
 end
 
 local grip_index = {}
@@ -390,6 +526,13 @@ local function check_world_change()
         state.eruptor_was_cycling = false
         state.eruptor_jammed = false
         state.active_goid = nil
+        state.avatar_goid = nil
+        state.last_valid_grip = nil
+        state.last_sway_sx = nil
+        state.last_sway_sy = nil
+        state.last_sway_time = 0
+        head_node_cache = {}
+        last_aim_time = 0
         if chef.watch then
             pcall(function()
                 avatar_watch = chef.watch({ [AVATAR_RESOURCE] = true }, 2)
@@ -402,12 +545,17 @@ if chef and chef.option then
     pcall(function()
         chef.option("fire_mode_enabled", {
             type = "toggle",
-            label = "Show Fire Mode (Option B)",
+            label = "Autocannon Mode (APHET / FLAK)",
             default = true,
         })
         chef.option("jam_alert_enabled", {
             type = "toggle",
             label = "Eruptor Jammed Alert",
+            default = true,
+        })
+        chef.option("canted_reticle_enabled", {
+            type = "toggle",
+            label = "Sniper Canted Aim Reticle",
             default = true,
         })
         chef.option("wing_offset_x", {
@@ -447,6 +595,10 @@ local function get_active_weapon()
     for _, goid in pairs(my_objects) do
         local exists = chef.call('GameSession.game_object_exists', s, goid)
         if exists == true then
+            if chef.call('GameSession.game_object_is_type', s, goid, "vvhx8ga") == true then
+                state.avatar_goid = goid
+            end
+
             local spec = type_cache[goid]
             if spec == nil then
                 for _, w in ipairs(WEAPONS) do
@@ -476,6 +628,7 @@ local function get_active_weapon()
                         spec = spec,
                         is_eruptor = spec.is_eruptor or false,
                         is_autocannon = spec.is_ac or false,
+                        is_sniper = spec.is_sniper or false,
                         held = (is_held == true),
                         options = tonumber(options),
                         fire_mode = tonumber(fire_mode),
@@ -506,30 +659,37 @@ local function get_active_weapon()
         return held_weapon
     end
 
-    -- 2. If held == true wasn't found (e.g. during weapon switch transition), check animation grip pose
+    -- 2. Check animation grip pose
     local grip = get_hand_grip()
-    if grip then
+    if grip and grip ~= 0 then
         for _, cw in ipairs(carried_weapons) do
             if cw.spec.grip and cw.spec.grip == grip then
                 state.last_active_weapon = cw
                 return cw
             end
         end
+        -- Active grip is known (e.g. Talon grip 9, pistol grip 40/1, grenade)
+        -- None of our known carried weapons match this grip!
+        -- We must NOT falsely report that the previous sniper is still active!
+        state.last_active_weapon = nil
+        return nil
     end
 
-    -- 3. Fallback to previously active weapon if it is still carried
+    -- 3. While sprinting (grip == 0) or grip unknown, fallback to previously active weapon if still carried
     if state.last_active_weapon then
         for _, cw in ipairs(carried_weapons) do
             if cw.goid == state.last_active_weapon.goid then
-                state.last_active_weapon = cw
                 return cw
             end
         end
     end
 
-    -- 4. Default to first carried weapon
-    state.last_active_weapon = carried_weapons[1]
-    return carried_weapons[1]
+    -- 4. Default to first carried weapon only if grip was completely unavailable
+    if not grip then
+        state.last_active_weapon = carried_weapons[1]
+        return carried_weapons[1]
+    end
+    return nil
 end
 
 function ViperHUD.update(dt)
@@ -586,50 +746,24 @@ function ViperHUD.update(dt)
         chef.log(string.format("[viper_hud] Hand grip pose: %d", grip))
     end
 
-    -- Feature 1: Fire Mode Indicator (Centered Horizontally, Y Preserved)
+    -- Feature 1: Fire Mode Indicator (Restricted strictly to AC-8 Autocannon APHET / FLAK)
     local show_fire = true
     if chef.get then
         local opt = chef.get("fire_mode_enabled")
         if opt ~= nil then show_fire = opt end
     end
 
-    if show_fire and w and chef.rect and chef.text and chef.color then
-        local label = "AUTO"
-        local txt_col = chef.color(255, 170, 40, 240)
+    if show_fire and w and w.is_autocannon and chef.rect and chef.text and chef.color then
+        local label = "APHET"
+        local txt_col = chef.color(255, 125, 30, 255)
 
-        if w.is_autocannon then
-            local mode_idx = math.floor((w.options or 0) / 4) % 4
-            if mode_idx == 1 then
-                label = "FLAK"
-                txt_col = chef.color(50, 210, 255, 255)
-            else
-                label = "APHET"
-                txt_col = chef.color(255, 125, 30, 255)
-            end
-        elseif w.is_eruptor then
-            label = "BOLT"
-            txt_col = chef.color(255, 180, 50, 240)
+        local mode_idx = math.floor((w.options or 0) / 4) % 4
+        if mode_idx == 1 then
+            label = "FLAK"
+            txt_col = chef.color(50, 210, 255, 255)
         else
-            local fm = (w.fire_mode or 0) % 8
-            if fm == 2 then
-                label = "SEMI"
-                txt_col = chef.color(140, 240, 140, 240)
-            elseif fm == 3 then
-                label = "BURST"
-                txt_col = chef.color(80, 200, 255, 240)
-            elseif fm == 4 then
-                label = "VOLLEY"
-                txt_col = chef.color(200, 120, 255, 240)
-            elseif fm == 5 then
-                label = "SAFE"
-                txt_col = chef.color(100, 240, 100, 240)
-            elseif fm == 6 then
-                label = "UNSAFE"
-                txt_col = chef.color(255, 80, 80, 240)
-            else
-                label = "AUTO"
-                txt_col = chef.color(255, 170, 40, 240)
-            end
+            label = "APHET"
+            txt_col = chef.color(255, 125, 30, 255)
         end
 
         local text_w = (chef.text_width and chef.text_width(label, px)) or (px * 18)
@@ -711,6 +845,96 @@ function ViperHUD.update(dt)
 
             chef.rect(alert_x, alert_y, alert_w, alert_h, bg_col, layer_bg)
             chef.text(text_x, text_y, jam_text, px, alert_col, layer_fg)
+        end
+    end
+
+    -- Feature 4: Canted Aim Dual Reticle for Sniper Rifles
+    local show_reticle = true
+    if chef.get then
+        local opt = chef.get("canted_reticle_enabled")
+        if opt ~= nil then show_reticle = opt end
+    end
+
+    if show_reticle and w and w.is_sniper and chef.rect and chef.color then
+        local live_grip = get_hand_grip()
+        if live_grip and live_grip ~= 0 then
+            state.last_valid_grip = live_grip
+        end
+        local grip = live_grip or state.last_valid_grip
+        -- Hard guard: Only display canted reticle if currently held grip matches the sniper!
+        if grip and w.spec.grip and grip == w.spec.grip then
+            local s = chef.call and chef.call('Network.game_session')
+            local aiming = is_player_aiming(s, state.avatar_goid)
+            local first_person = is_first_person()
+
+            if chef.log and state.last_canted_aiming ~= aiming then
+                state.last_canted_aiming = aiming
+                local raw_pt = (aiming and state.avatar_goid) and safe_field(s, state.avatar_goid, "vvhx8ga", "aimpt") or nil
+                local ax, ay, az = parse_vec3(raw_pt)
+                local sx, sy = nil, nil
+                if ax and ay and az then
+                    sx, sy = project_to_screen(ax, ay, az)
+                end
+                chef.log(string.format("[viper_hud] Canted reticle: weapon=%s, grip=%s, aiming=%s, 1p=%s, av_goid=%s, raw_pt=%s, sway_screen=%s,%s",
+                    tostring(w.spec and w.spec.name), tostring(grip), tostring(aiming), tostring(first_person),
+                    tostring(state.avatar_goid), tostring(raw_pt ~= nil), tostring(sx), tostring(sy)))
+            end
+
+            if aiming and not first_person then
+                local cx = math.floor(sw / 2)
+                local cy = math.floor(sh / 2)
+                local shadow_col = chef.color(0, 0, 0, 150)
+                local static_col = chef.color(220, 225, 235, 175)
+
+                -- 1. Static Camera Center Reticle (HD2 Open Circle Style + Center Dot)
+                -- Smaller and reduced thickness:
+                local th = math.max(1.0, px * 0.45)
+                local r_static_out = math.floor(px * 3.3 + 0.5)
+                local r_static_in = r_static_out - th
+
+                if chef.ring and chef.circle then
+                    chef.ring(cx, cy, math.max(0, r_static_in - 0.6), r_static_out + 0.6, shadow_col, layer_fg)
+                    chef.ring(cx, cy, r_static_in, r_static_out, static_col, layer_fg + 1)
+                    chef.circle(cx, cy, 1.4, shadow_col, layer_fg)
+                    chef.circle(cx, cy, 0.9, static_col, layer_fg + 1)
+                end
+
+                -- 2. Dynamic Sway Reticle (Tracks physical weapon barrel aim point in 3D)
+                if state.avatar_goid and chef.ring and chef.circle then
+                    local raw_pt = safe_field(s, state.avatar_goid, "vvhx8ga", "aimpt")
+                    local sx, sy = nil, nil
+                    if raw_pt then
+                        local ax, ay, az = parse_vec3(raw_pt)
+                        if ax and ay and az and not (ax == 0 and ay == 0 and az == 0) then
+                            sx, sy = project_to_screen(ax, ay, az)
+                        end
+                    end
+
+                    -- Frame smoothing: maintain position across 1-frame raycast/projection drops
+                    if sx and sy then
+                        state.last_sway_sx = sx
+                        state.last_sway_sy = sy
+                        state.last_sway_time = state.total_time
+                    elseif state.last_sway_sx and (state.total_time - (state.last_sway_time or 0)) < 0.12 then
+                        sx = state.last_sway_sx
+                        sy = state.last_sway_sy
+                    end
+
+                    if sx and sy then
+                        local r_sway_out = math.floor(px * 1.9 + 0.5)
+                        local r_sway_in = r_sway_out - th
+                        local sway_col = chef.color(220, 225, 235, 185)
+
+                        -- Outer shadow ring
+                        chef.ring(sx, sy, math.max(0, r_sway_in - 0.6), r_sway_out + 0.6, shadow_col, layer_fg)
+                        -- Semi-transparent grey tracking ring
+                        chef.ring(sx, sy, r_sway_in, r_sway_out, sway_col, layer_fg + 1)
+                        -- Center impact pip
+                        chef.circle(sx, sy, 1.4, shadow_col, layer_fg)
+                        chef.circle(sx, sy, 0.9, sway_col, layer_fg + 1)
+                    end
+                end
+            end
         end
     end
 end
